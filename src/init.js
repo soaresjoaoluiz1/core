@@ -19,8 +19,7 @@ const IDES = [
   { label: 'Antigravity', value: 'antigravity', checked: true },
   { label: 'Claude Code', value: 'claude-code' },
   { label: 'Codex (OpenAI)', value: 'codex' },
-  { label: '──────────────────', separator: true },
-  { label: 'Cursor', value: 'cursor' },
+  { label: 'Cursor', value: 'cursor' }, 
   { label: 'VS Code + Copilot', value: 'vscode-copilot' },
 ];
 
