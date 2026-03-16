@@ -48,7 +48,7 @@ Aumenta carga cognitiva e complexidade arquitetural. Quebra simplicidade.
 Scope creep que não serve nosso core mission. Não é pra esse projeto.
 
 ❌ **Mudanças que complicam UX**
-Se torna o software mais difícil de usar, não entra.
+Torna o software mais difícil de usar, não entra.
 
 ❌ **Infraestrutura por infraestrutura** (CI/CD pipelines, deployment tools)
 A menos que sirvam contribuidores ou usuários finais diretamente.
@@ -214,7 +214,7 @@ squads/
 
 - Resolve um problema real que empreendedores enfrentam hoje (trabalho manual, ferramentas espalhadas)
 - Documentação clara e amigável para não-técnicos (use template acima)
-- Funciona out-of-the-box (pronto pra rodar, sem tweaks necessários)
+- Funciona pronto para rodar, sem tweaks necessários)
 - Inclui um exemplo real (inputs/outputs demonstrados)
 
 ---
@@ -436,7 +436,7 @@ Veja skills e templates existentes para exemplos.
   - Rode: `npm test` antes de PR
   - Formato: Node.js test runner
 - **Templates** — Teste manual com dados reais
-  - Documente: inputs usados, outputs recebidos, edge cases testados
+  - Documente: inputs usados, outputs recebidos, casos extremos testados
 - **Melhorias** — Mantenha cobertura de testes; `npm test` antes de PR
 
 ### Documentação
