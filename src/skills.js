@@ -100,7 +100,7 @@ export async function installSkill(id, targetDir) {
   try {
     await stat(srcDir);
   } catch (err) {
-    if (err.code === 'ENOENT') throw new Error(`Skill '${id}' not found in registry`);
+    if (err.code === 'ENOENT') throw new Error(`Skill '${id}' not found in registry`, { cause: err });
     throw err;
   }
   const destDir = join(targetDir, 'skills', id);

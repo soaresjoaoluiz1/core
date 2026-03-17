@@ -92,7 +92,7 @@ export async function installAgent(id, targetDir) {
   try {
     await readFile(srcFile);
   } catch (err) {
-    if (err.code === 'ENOENT') throw new Error(`Agent '${id}' not found in registry`);
+    if (err.code === 'ENOENT') throw new Error(`Agent '${id}' not found in registry`, { cause: err });
     throw err;
   }
   const destDir = join(targetDir, 'agents');
