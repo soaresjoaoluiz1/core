@@ -3,6 +3,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import type { Server, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { SquadInfo, SquadState, WsMessage } from "../types/state";
@@ -18,10 +19,14 @@ function resolveSquadsDir(): string {
   return path.resolve(process.cwd(), "../squads"); // default (will be created on demand)
 }
 
-function discoverSquads(squadsDir: string): SquadInfo[] {
-  if (!fs.existsSync(squadsDir)) return [];
+async function discoverSquads(squadsDir: string): Promise<SquadInfo[]> {
+  let entries;
+  try {
+    entries = await fsp.readdir(squadsDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
 
-  const entries = fs.readdirSync(squadsDir, { withFileTypes: true });
   const squads: SquadInfo[] = [];
 
   for (const entry of entries) {
@@ -29,27 +34,24 @@ function discoverSquads(squadsDir: string): SquadInfo[] {
     if (entry.name.startsWith(".") || entry.name.startsWith("_")) continue;
 
     const yamlPath = path.join(squadsDir, entry.name, "squad.yaml");
-    if (fs.existsSync(yamlPath)) {
-      try {
-        const raw = fs.readFileSync(yamlPath, "utf-8");
-        const parsed = parseYaml(raw);
-        const s = parsed?.squad;
-        if (s) {
-          squads.push({
-            code: typeof s.code === "string" ? s.code : entry.name,
-            name: typeof s.name === "string" ? s.name : entry.name,
-            description: typeof s.description === "string" ? s.description : "",
-            icon: typeof s.icon === "string" ? s.icon : "\u{1F4CB}",
-            agents: Array.isArray(s.agents) ? (s.agents as unknown[]).filter((a): a is string => typeof a === "string") : [],
-          });
-          continue;
-        }
-      } catch {
-        // Fall through to default
+    try {
+      const raw = await fsp.readFile(yamlPath, "utf-8");
+      const parsed = parseYaml(raw);
+      const s = parsed?.squad;
+      if (s) {
+        squads.push({
+          code: typeof s.code === "string" ? s.code : entry.name,
+          name: typeof s.name === "string" ? s.name : entry.name,
+          description: typeof s.description === "string" ? s.description : "",
+          icon: typeof s.icon === "string" ? s.icon : "\u{1F4CB}",
+          agents: Array.isArray(s.agents) ? (s.agents as unknown[]).filter((a): a is string => typeof a === "string") : [],
+        });
+        continue;
       }
+    } catch {
+      // No squad.yaml or invalid YAML — fall through to default
     }
 
-    // No squad.yaml or invalid YAML — use directory name as fallback
     squads.push({
       code: entry.name,
       name: entry.name,
@@ -62,32 +64,36 @@ function discoverSquads(squadsDir: string): SquadInfo[] {
   return squads;
 }
 
-function readActiveStates(squadsDir: string): Record<string, SquadState> {
+async function readActiveStates(squadsDir: string): Promise<Record<string, SquadState>> {
   const states: Record<string, SquadState> = {};
-  if (!fs.existsSync(squadsDir)) return states;
 
-  const entries = fs.readdirSync(squadsDir, { withFileTypes: true });
+  let entries;
+  try {
+    entries = await fsp.readdir(squadsDir, { withFileTypes: true });
+  } catch {
+    return states;
+  }
+
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const statePath = path.join(squadsDir, entry.name, "state.json");
-    if (!fs.existsSync(statePath)) continue;
 
     try {
-      const raw = fs.readFileSync(statePath, "utf-8");
+      const raw = await fsp.readFile(statePath, "utf-8");
       states[entry.name] = JSON.parse(raw);
     } catch {
-      // Skip invalid JSON
+      // Skip missing or invalid JSON
     }
   }
 
   return states;
 }
 
-function buildSnapshot(squadsDir: string): WsMessage {
+async function buildSnapshot(squadsDir: string): Promise<WsMessage> {
   return {
     type: "SNAPSHOT",
-    squads: discoverSquads(squadsDir),
-    activeStates: readActiveStates(squadsDir),
+    squads: await discoverSquads(squadsDir),
+    activeStates: await readActiveStates(squadsDir),
   };
 }
 
