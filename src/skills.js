@@ -1,5 +1,5 @@
 import { cp, readdir, readFile, rm, stat } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -96,6 +96,11 @@ export async function installSkill(id, targetDir) {
     throw err;
   }
   const destDir = join(targetDir, 'skills', id);
+  const resolvedSrc = resolve(srcDir);
+  const resolvedDest = resolve(destDir);
+  if (resolvedSrc === resolvedDest || resolvedDest.startsWith(resolvedSrc + sep)) {
+    return;
+  }
   await cp(srcDir, destDir, { recursive: true });
 }
 

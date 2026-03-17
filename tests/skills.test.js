@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 import { tmpdir } from 'node:os';
 import {
   listInstalled,
@@ -124,6 +127,12 @@ test('installSkill copies full directory including subdirs for opensquad-skill-c
   } finally {
     await rm(dir, { recursive: true });
   }
+});
+
+test('installSkill skips copy when src and dest resolve to the same path', async () => {
+  // Simulates running init from inside the opensquad repo itself
+  const repoRoot = join(__dirname, '..');
+  await assert.doesNotReject(() => installSkill('image-creator', repoRoot));
 });
 
 // --- removeSkill ---
