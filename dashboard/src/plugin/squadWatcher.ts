@@ -4,6 +4,7 @@ import type { Server, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import { watch as chokidarWatch } from "chokidar";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { SquadInfo, SquadState, WsMessage } from "../types/state";
@@ -101,7 +102,11 @@ function broadcast(wss: WebSocketServer, msg: WsMessage) {
   const data = JSON.stringify(msg);
   for (const client of wss.clients) {
     if (client.readyState === WebSocket.OPEN) {
-      client.send(data);
+      try {
+        client.send(data);
+      } catch {
+        // Client connection dying — ws library will clean it up
+      }
     }
   }
 }
@@ -110,6 +115,11 @@ export function squadWatcherPlugin(): Plugin {
   return {
     name: "squad-watcher",
     configureServer(server: ViteDevServer) {
+      if (!server.httpServer) {
+        server.config.logger.warn("[squad-watcher] no httpServer — skipping");
+        return;
+      }
+
       const squadsDir = resolveSquadsDir();
       server.config.logger.info(`[squad-watcher] squads dir: ${squadsDir}`);
 
@@ -126,8 +136,12 @@ export function squadWatcherPlugin(): Plugin {
 
       // Send snapshot on new connection
       wss.on("connection", async (ws) => {
-        const snap = await buildSnapshot(squadsDir);
-        ws.send(JSON.stringify(snap));
+        try {
+          const snap = await buildSnapshot(squadsDir);
+          ws.send(JSON.stringify(snap));
+        } catch {
+          // Connection may have closed before snapshot was ready
+        }
       });
 
       // Ensure squads directory exists
@@ -135,49 +149,55 @@ export function squadWatcherPlugin(): Plugin {
         server.config.logger.error(`[squad-watcher] failed to create squads dir: ${err.message}`);
       });
 
-      // Debounce timers per squad to avoid reading partial writes
-      const changeTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-      // Use native fs.watch with recursive mode — reliable on Windows for
-      // files written by external processes (the CLI agent runner).
-      const fsWatcher = fs.watch(squadsDir, { recursive: true }, (_event, filename) => {
-        if (!filename || typeof filename !== "string") return;
-
-        // Normalize path separators (Windows uses backslashes)
-        const normalized = filename.replace(/\\/g, "/");
-
-        if (normalized.endsWith("state.json")) {
-          const parts = normalized.split("/");
-          const squadName = parts.length >= 2 ? parts[0] : null;
-          if (!squadName) return;
-
-          // Debounce to handle rapid writes / partial file states
-          clearTimeout(changeTimers.get(squadName));
-          changeTimers.set(squadName, setTimeout(async () => {
-            const statePath = path.join(squadsDir, squadName, "state.json");
-            try {
-              const raw = await fsp.readFile(statePath, "utf-8");
-              const state: SquadState = JSON.parse(raw);
-              broadcast(wss, { type: "SQUAD_UPDATE", squad: squadName, state });
-            } catch (err: unknown) {
-              if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
-                // File deleted — squad is inactive
-                changeTimers.delete(squadName);
-                broadcast(wss, { type: "SQUAD_INACTIVE", squad: squadName });
-              }
-              // Invalid JSON during partial write — silently skip, next event will retry
-            }
-          }, 50));
-
-        } else if (normalized.endsWith("squad.yaml")) {
-          buildSnapshot(squadsDir).then((snap) => broadcast(wss, snap));
-        }
+      // File watcher using chokidar — reliable cross-platform, handles partial writes
+      const watcher = chokidarWatch(squadsDir, {
+        ignoreInitial: true,
+        awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 50 },
+        ignored: [/(^|[/\\])\./, /node_modules/, /output[/\\]/],
+        depth: 2,
       });
 
-      // Clean up fs watcher when Vite server closes
-      server.httpServer?.on("close", () => {
-        fsWatcher.close();
-        for (const timer of changeTimers.values()) clearTimeout(timer);
+      function handleFileChange(filePath: string) {
+        const relative = path.relative(squadsDir, filePath).replace(/\\/g, "/");
+        const parts = relative.split("/");
+        if (parts.length < 2) return;
+
+        const squadName = parts[0];
+        const fileName = parts[1];
+
+        if (fileName === "state.json") {
+          fsp.readFile(filePath, "utf-8").then((raw) => {
+            const state: SquadState = JSON.parse(raw);
+            broadcast(wss, { type: "SQUAD_UPDATE", squad: squadName, state });
+          }).catch(() => {
+            // Invalid JSON — next change event will retry
+          });
+        } else if (fileName === "squad.yaml") {
+          buildSnapshot(squadsDir).then((snap) => broadcast(wss, snap));
+        }
+      }
+
+      function handleFileRemoval(filePath: string) {
+        const relative = path.relative(squadsDir, filePath).replace(/\\/g, "/");
+        const parts = relative.split("/");
+        if (parts.length < 2) return;
+
+        const squadName = parts[0];
+        const fileName = parts[1];
+
+        if (fileName === "state.json") {
+          broadcast(wss, { type: "SQUAD_INACTIVE", squad: squadName });
+        } else if (fileName === "squad.yaml") {
+          buildSnapshot(squadsDir).then((snap) => broadcast(wss, snap));
+        }
+      }
+
+      watcher.on("add", handleFileChange);
+      watcher.on("change", handleFileChange);
+      watcher.on("unlink", handleFileRemoval);
+
+      server.httpServer.on("close", () => {
+        watcher.close();
       });
     },
   };
