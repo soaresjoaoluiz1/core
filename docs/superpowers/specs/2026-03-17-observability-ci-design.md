@@ -11,7 +11,7 @@ Alternative to PR #7 (`feat/observability-ci`). Same goals, split into 3 focused
 
 ## Decisions
 
-- **Run logging reads `state.json` directly** — no separate `run-log.json`. The runner already writes `state.json` during execution; we stop deleting it at the end and mark it as `completed`/`failed` instead. Fewer files, fewer instructions, fewer tokens.
+- **Run logging reads `state.json` directly** — no separate `run-log.json`. The runner already writes `state.json` during execution; after completion, it copies `state.json` into the run's output directory (`squads/{name}/output/{run_id}/state.json`) for permanent history, then deletes the working copy from the squad root. Fewer files, fewer instructions, fewer tokens.
 - **Run log is minimal** — only essential fields to avoid inflating token usage.
 - **Logger errors are silent** — never breaks the operation being logged.
 - **ESLint is error-only** — no style rules, just catches real bugs.
@@ -46,7 +46,8 @@ Tests only. Zero production code changes.
 
 ### Acceptance criteria
 
-- `npm test` — 89/89 pass (previously 84/89)
+- `npm test` — all tests pass, including the untracked `tests/agents.test.js` which should be committed as part of this PR
+- Verify exact pass count after fixes (currently 94 total with agents.test.js: 89 pass, 5 fail)
 
 ---
 
@@ -62,22 +63,23 @@ Tests only. Zero production code changes.
 ```js
 // ESLint 9 flat config — error checking only
 import js from "@eslint/js";
+import globals from "globals";
 
 export default [
   js.configs.recommended,
   {
     files: ["src/**/*.js", "bin/**/*.js", "tests/**/*.js"],
     languageOptions: {
-      ecmaVersion: 2022,
+      ecmaVersion: "latest",
       sourceType: "module",
-      globals: { /* node globals */ }
+      globals: { ...globals.node }
     }
   }
 ];
 ```
 
 **package.json changes:**
-- Add `eslint` as devDependency
+- Add `eslint`, `@eslint/js`, `globals` as devDependencies
 - Add `"lint": "eslint src/ bin/ tests/"` script
 
 ### GitHub Actions
@@ -130,7 +132,7 @@ jobs:
 
 - Format: JSONL (one JSON object per line)
 - Fields per line: `{ timestamp, action, details }`
-- Actions: `init`, `update`, `skill:install`, `skill:remove`, `agent:install`, `agent:remove`
+- Actions: `init`, `update`, `skill:install`, `skill:remove`, `skill:update`, `agent:install`, `agent:remove`, `agent:update`
 - Silent on failure (try/catch, no throw)
 - `details` is a flat object with 1-3 relevant fields (e.g., `{ name: "sherlock" }`)
 
@@ -146,8 +148,13 @@ jobs:
 - `_opensquad/core/runner.pipeline.md`
 - `templates/_opensquad/core/runner.pipeline.md`
 
-**Change:** Remove the instruction that deletes `state.json` after pipeline completion. Instead, the runner marks the final status:
+**Change:** Instead of deleting `state.json` after pipeline completion, the runner:
 
+1. Marks the final status with a `completedAt` or `failedAt` timestamp
+2. Copies `state.json` to `squads/{name}/output/{run_id}/state.json` for permanent history
+3. Deletes the working copy from the squad root (so it's clean for the next run)
+
+Completed state example:
 ```json
 {
   "status": "completed",
@@ -155,8 +162,7 @@ jobs:
 }
 ```
 
-On failure:
-
+Failed state example:
 ```json
 {
   "status": "failed",
@@ -165,7 +171,7 @@ On failure:
 }
 ```
 
-No new fields, no new files. Just stop deleting what's already there.
+**Important:** Both `_opensquad/core/runner.pipeline.md` and `templates/_opensquad/core/runner.pipeline.md` must be modified identically to prevent drift between installed instances and the template.
 
 ### 3c. Runs command
 
@@ -199,4 +205,5 @@ No new fields, no new files. Just stop deleting what's already there.
 - All new tests pass
 - `npm test` full suite green
 - `npx opensquad runs` shows "No runs found." on fresh project
-- After a pipeline run, `state.json` persists and `npx opensquad runs` shows the run
+- After a pipeline run, `state.json` is archived in `output/{run_id}/` and `npx opensquad runs` shows the run
+- Duration is calculated from `startedAt` and `completedAt`/`failedAt` fields in `state.json`
