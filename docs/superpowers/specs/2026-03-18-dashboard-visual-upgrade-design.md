@@ -178,8 +178,8 @@ y+128 ── Cell bottom boundary
 | `palette.ts` | New shading colors, expanded `CharacterColors` type and `CHARACTER_VARIANTS`, new colors for accessories and name card background |
 | `textures.ts` | Full rewrite — 48×48 canvas, detailed front-facing character with multi-tone shading, all 3 poses rebuilt |
 | `drawDesk.ts` | Full rewrite — wood-grain desk, beveled monitor, detailed keyboard/mouse, enhanced chair, new `drawDeskAccessories()` function |
-| `AgentDesk.tsx` | Updated Y offsets, new name card rendering (Graphics roundRect + triangle + Text for emoji/name + circle for status dot), removal of old text labels, sprite size 48×48, `agentIndex` passed to accessory drawing |
-| `OfficeScene.tsx` | `GRID_OFFSET_Y` changed from `TILE*3` to `TILE*4` |
+| `AgentDesk.tsx` | `GRID_OFFSET_Y` changed from `TILE*3` to `TILE*4`, updated Y offsets, new name card rendering (Graphics roundRect + triangle + Text for emoji/name + circle for status dot), removal of old text labels, sprite size 48×48, `agentIndex` passed to accessory drawing |
+| `OfficeScene.tsx` | Minimal — adjusts only if wall/margin calculations need updating for new GRID_OFFSET_Y |
 
 ### Files NOT modified
 - `drawRoom.ts` — floor/wall rendering stays the same
@@ -189,7 +189,7 @@ y+128 ── Cell bottom boundary
 
 ## 6. Data requirements
 
-The name card needs the agent's emoji/icon. This should come from the squad YAML definition. Check that the `Agent` type in `types/state.ts` includes an `icon` field (or add it if missing). The backend state should pass each agent's icon through to the frontend.
+The name card needs the agent's emoji/icon. The `Agent` type in `types/state.ts` already includes an `icon` field (confirmed). No backend changes needed — the icon is already passed through to the frontend.
 
 ## 7. Risk and complexity notes
 
