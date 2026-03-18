@@ -22,19 +22,23 @@ export function parseArgs(argv) {
   return args;
 }
 
-// ── Image upload (imgbb) ──────────────────────────────────────
+// ── Image upload (catbox.moe) ─────────────────────────────────
 
-export async function uploadToImgbb(imagePath, apiKey) {
+export async function uploadToCatbox(imagePath) {
   const absolutePath = resolve(imagePath);
-  const base64 = readFileSync(absolutePath).toString('base64');
-  const body = new URLSearchParams({ image: base64 });
-  const res = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
+  const fileBuffer = readFileSync(absolutePath);
+  const fileName = absolutePath.split(/[\\/]/).pop();
+  const blob = new Blob([fileBuffer], { type: 'image/jpeg' });
+  const form = new FormData();
+  form.append('reqtype', 'fileupload');
+  form.append('fileToUpload', blob, fileName);
+  const res = await fetch('https://catbox.moe/user/api.php', {
     method: 'POST',
-    body,
+    body: form,
   });
-  if (!res.ok) throw new Error(`imgbb upload failed [${res.status}]: ${await res.text()}`);
-  const json = await res.json();
-  return json.data.url;
+  if (!res.ok) throw new Error(`catbox.moe upload failed [${res.status}]: ${await res.text()}`);
+  const url = (await res.text()).trim();
+  return url;
 }
 
 // ── Instagram Graph API ───────────────────────────────────────
@@ -111,13 +115,12 @@ async function main() {
     throw new Error(`Caption exceeds Instagram's 2200-character limit (got ${caption.length})`);
   }
 
-  const { IMGBB_API_KEY, INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_USER_ID } = process.env;
-  if (!IMGBB_API_KEY) throw new Error('IMGBB_API_KEY is not set in environment');
+  const { INSTAGRAM_ACCESS_TOKEN, INSTAGRAM_USER_ID } = process.env;
   if (!INSTAGRAM_ACCESS_TOKEN) throw new Error('INSTAGRAM_ACCESS_TOKEN is not set in environment');
   if (!INSTAGRAM_USER_ID) throw new Error('INSTAGRAM_USER_ID is not set in environment');
 
-  console.log(`📸 Uploading ${images.length} image(s) to imgbb...`);
-  const imageUrls = await Promise.all(images.map(p => uploadToImgbb(p, IMGBB_API_KEY)));
+  console.log(`📸 Uploading ${images.length} image(s) to catbox.moe...`);
+  const imageUrls = await Promise.all(images.map(p => uploadToCatbox(p)));
   imageUrls.forEach((url, i) => console.log(`   [${i + 1}] ${url}`));
 
   console.log('\n📦 Creating Instagram media containers...');
