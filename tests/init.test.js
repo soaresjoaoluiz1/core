@@ -194,14 +194,14 @@ test('init with _ides codex creates AGENTS.md', async () => {
   }
 });
 
-test('init with _ides antigravity creates .antigravity/rules.md', async () => {
+test('init with _ides antigravity creates .agent/rules/opensquad.md', async () => {
   const tempDir = await mkdtemp(join(tmpdir(), 'opensquad-test-'));
 
   try {
     await init(tempDir, { _skipPrompts: true, _ides: ['antigravity'] });
 
     const content = await readFile(
-      join(tempDir, '.antigravity', 'rules.md'),
+      join(tempDir, '.agent', 'rules', 'opensquad.md'),
       'utf-8'
     );
     assert.ok(content.includes('Opensquad'));
@@ -223,7 +223,7 @@ test('init with _ides antigravity creates .agent/workflows/opensquad.md', async 
     );
     assert.ok(content.includes('description:'));
     assert.ok(content.includes('Opensquad'));
-    assert.ok(content.includes('rules.md'));
+    assert.ok(content.includes('/opensquad'));
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

@@ -68,8 +68,8 @@ opensquad supports multiple IDEs. When a user runs `npx opensquad init`, they ch
 | IDE | Template Folder | Example Files |
 |-----|----------------|---------------|
 | Claude Code | `templates/ide-templates/claude-code/` | `SKILL.md`, `CLAUDE.md`, `.mcp.json` |
-| Antigravity | `templates/ide-templates/antigravity/` | `.antigravity/rules.md`, `.agent/workflows/opensquad.md` |
-| OpenCode | `templates/ide-templates/opencode/` | `AGENTS.md` |
+| Antigravity | `templates/ide-templates/antigravity/` | `.agent/rules/opensquad.md`, `.agent/workflows/opensquad.md` |
+| OpenCode | `templates/ide-templates/opencode/` | `AGENTS.md`, `.opencode/commands/opensquad.md` |
 | Codex | `templates/ide-templates/codex/` | `AGENTS.md` |
 
 ### The Golden Rule
@@ -80,7 +80,7 @@ opensquad supports multiple IDEs. When a user runs `npx opensquad init`, they ch
 **Violation example:**
 - User asks: "Add sequential execution support for Antigravity in the pipeline."
 - ❌ Wrong: Edit `_opensquad/core/runner.pipeline.md` adding `if antigravity: run sequentially`
-- ✅ Correct: Edit `templates/ide-templates/antigravity/.antigravity/rules.md` with the sequential execution instructions
+- ✅ Correct: Edit `templates/ide-templates/antigravity/.agent/rules/opensquad.md` with the sequential execution instructions
 
 **Legitimate shared file edit:**
 - User asks: "Add a new researcher agent type to the architect."

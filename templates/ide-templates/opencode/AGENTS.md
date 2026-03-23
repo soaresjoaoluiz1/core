@@ -31,18 +31,18 @@ If `company.md` is empty or contains `<!-- NOT CONFIGURED -->`:
 
 ## Main Menu
 
-When the user types `/opensquad` or asks for the menu, present the following numbered menu and ask the user to reply with a number:
+When the user types `/opensquad` or asks for the menu, present an interactive selector using AskUserQuestion with these options (max 4 per question):
 
-**Primary menu:**
-1. **Create a new squad** — Describe what you need and I'll build a squad for you
-2. **Run an existing squad** — Execute a squad's pipeline
-3. **My squads** — View, edit, or delete your squads
-4. **More options** — Skills, company profile, settings, and help
+**Primary menu (first question):**
+- **Create a new squad** — Describe what you need and I'll build a squad for you
+- **Run an existing squad** — Execute a squad's pipeline
+- **My squads** — View, edit, or delete your squads
+- **More options** — Skills, company profile, settings, and help
 
-If the user replies "4" or types "More options", present a second numbered menu:
-1. **Skills** — Browse, install, create, and manage skills for your squads
-2. **Company profile** — View or update your company information
-3. **Settings & Help** — Language, preferences, configuration, and help
+If the user selects "More options", present a second AskUserQuestion:
+- **Skills** — Browse, install, create, and manage skills for your squads
+- **Company profile** — View or update your company information
+- **Settings & Help** — Language, preferences, configuration, and help
 
 ## Command Routing
 
@@ -103,23 +103,3 @@ When running a squad:
 - When switching personas (inline execution), clearly indicate which agent is speaking
 - When using subagents, inform the user that background work is happening
 - After each pipeline run, update the squad's memories.md with key learnings
-- NEVER ask more than one question per message — always wait for the user's answer before proceeding to the next question (this environment has no interactive tool; numbered replies replace it)
-- When presenting options, always use a numbered list (1. / 2. / 3.) — tell the user to reply with the option number
-
-## Antigravity Environment: Subagents
-
-This environment (Google Antigravity) does not support spawning background or parallel subagents. When agent instructions (e.g., from the Architect) say to "use the Task tool with run_in_background: true" or similar, you MUST instead execute all tasks inline and sequentially:
-
-1. Inform the user you will process the tasks one by one
-2. Execute each task in the current conversation — do NOT skip or defer any of them
-3. Complete ALL tasks before asking the next question or moving on
-
-**Example:** If asked to analyze 3 reference profiles in parallel, do this instead:
-- Inform the user: "I'll analyze each profile now, one at a time."
-- Run WebSearch/WebFetch for profile 1, show the findings
-- Run WebSearch/WebFetch for profile 2, show the findings
-- Run WebSearch/WebFetch for profile 3, show the findings
-- Synthesize all findings, then continue
-
-Never announce that you "will do something in parallel" and then skip the work. Always do the actual research inline before continuing.
-
