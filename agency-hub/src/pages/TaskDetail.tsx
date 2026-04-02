@@ -1,0 +1,311 @@
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { useSSE } from '../context/SSEContext'
+import { fetchTask, fetchClients, fetchDepartments, fetchUsers, fetchCategories, updateTask, moveTaskStage, addTaskComment, addTaskAttachment, approveTask, rejectTask, startTimer, stopTimer, type Task, type TaskComment, type TaskHistory, type TaskAttachment, type TimeEntry, type Client, type Department, type User as UserT, type TaskCategory } from '../lib/api'
+import { ArrowLeft, Building2, Clock, User, ExternalLink, CheckCircle, XCircle, Send, MessageCircle, GitBranch, Paperclip, Eye, Edit3, Save, X, Plus, AlertTriangle } from 'lucide-react'
+
+export default function TaskDetail() {
+  const { id } = useParams()
+  const { user } = useAuth()
+  const navigate = useNavigate()
+  const [task, setTask] = useState<Task | null>(null)
+  const [comments, setComments] = useState<TaskComment[]>([])
+  const [history, setHistory] = useState<TaskHistory[]>([])
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [commentText, setCommentText] = useState('')
+  const [isInternal, setIsInternal] = useState(true)
+  const [rejectReason, setRejectReason] = useState('')
+  const [showReject, setShowReject] = useState(false)
+  const [activeTab, setActiveTab] = useState<'comments' | 'history' | 'attachments' | 'time'>('comments')
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([])
+  const [totalTime, setTotalTime] = useState(0)
+  const [activeTimerEntry, setActiveTimerEntry] = useState<TimeEntry | null>(null)
+  const [timerRunning, setTimerRunning] = useState(false)
+  const [timerElapsed, setTimerElapsed] = useState(0)
+  // Edit mode
+  const [editing, setEditing] = useState(false)
+  const [editData, setEditData] = useState<any>({})
+  const [clients, setClients] = useState<Client[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
+  const [users, setUsers] = useState<UserT[]>([])
+  const [categories, setCategories] = useState<TaskCategory[]>([])
+  // Attachment
+  const [newAttUrl, setNewAttUrl] = useState('')
+  const [newAttName, setNewAttName] = useState('')
+
+  const isDono = user?.role === 'dono'
+  const isFunc = user?.role === 'funcionario'
+  const isCliente = user?.role === 'cliente'
+  const canEdit = isDono || (isFunc && task?.assigned_to === user?.id)
+
+  const loadTask = useCallback(async () => {
+    if (!id) return
+    const data = await fetchTask(+id)
+    setTask(data.task); setComments(data.comments); setHistory(data.history); setAttachments(data.attachments)
+    setEditData({ title: data.task.title, description: data.task.description || '', due_date: data.task.due_date?.slice(0, 10) || '', priority: data.task.priority, department_id: data.task.department_id || '', assigned_to: data.task.assigned_to || '', category_id: data.task.category_id || '', drive_link: data.task.drive_link || '', drive_link_raw: data.task.drive_link_raw || '' })
+    setTimeEntries(data.timeEntries || []); setTotalTime(data.totalTimeSeconds || 0)
+    if (data.activeTimer) { setActiveTimerEntry(data.activeTimer); setTimerRunning(true) } else { setActiveTimerEntry(null); setTimerRunning(false) }
+  }, [id])
+
+  useEffect(() => {
+    setLoading(true)
+    Promise.all([loadTask(), isDono ? fetchClients().then(setClients) : Promise.resolve(), isDono ? fetchDepartments().then(setDepartments) : Promise.resolve(), isDono ? fetchUsers().then(setUsers) : Promise.resolve(), fetchCategories().then(setCategories)])
+      .finally(() => setLoading(false))
+  }, [loadTask, isDono])
+  useSSE('task:stage_changed', useCallback((data: any) => { if (data.id === parseInt(id || '0')) loadTask() }, [id, loadTask]))
+  useSSE('task:comment', useCallback((data: any) => { if (data.taskId === parseInt(id || '0')) loadTask() }, [id, loadTask]))
+
+  // Timer tick
+  useEffect(() => {
+    if (!timerRunning || !activeTimerEntry) return
+    const interval = setInterval(() => {
+      setTimerElapsed(Math.floor((Date.now() - new Date(activeTimerEntry.started_at + 'Z').getTime()) / 1000))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [timerRunning, activeTimerEntry])
+
+  const handleStartTimer = async () => { if (task) { await startTimer(task.id); loadTask() } }
+  const handleStopTimer = async () => { if (task) { await stopTimer(task.id); setTimerRunning(false); setTimerElapsed(0); loadTask() } }
+
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600); const m = Math.floor((seconds % 3600) / 60); const s = seconds % 60
+    return h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`
+  }
+
+  const handleSaveEdit = async () => {
+    if (!task) return
+    await updateTask(task.id, { ...editData, department_id: editData.department_id ? +editData.department_id : null, assigned_to: editData.assigned_to ? +editData.assigned_to : null, category_id: editData.category_id ? +editData.category_id : null })
+    setEditing(false); loadTask()
+  }
+
+  const handleAddAttachment = async () => {
+    if (!task || !newAttUrl || !newAttName) return
+    await addTaskAttachment(task.id, newAttUrl, newAttName)
+    setNewAttUrl(''); setNewAttName(''); loadTask()
+  }
+
+  const handleComment = async () => {
+    if (!commentText.trim() || !task) return
+    const comment = await addTaskComment(task.id, commentText, isInternal)
+    setComments(prev => [...prev, comment]); setCommentText('')
+  }
+
+  const handleApprove = async () => { if (task) { await approveTask(task.id); loadTask() } }
+  const handleReject = async () => { if (task && rejectReason) { await rejectTask(task.id, rejectReason); setShowReject(false); setRejectReason(''); loadTask() } }
+
+  const handleStageMove = async (stage: string) => { if (task) { await moveTaskStage(task.id, stage); loadTask() } }
+
+  if (loading) return <div className="loading-container"><div className="spinner" /></div>
+  if (!task) return <div className="empty-state"><h3>Tarefa nao encontrada</h3></div>
+
+  const canApproveInternal = isDono && task.stage === 'aprovacao_interna'
+  const canApproveClient = isCliente && task.stage === 'aguardando_cliente'
+  const canPickUp = isFunc && task.stage === 'backlog'
+  const canSubmitReview = isFunc && task.stage === 'em_producao' && task.assigned_to === user?.id
+  const canMoveToApproval = isDono && task.stage === 'revisao_interna'
+  const canSchedule = isDono && task.stage === 'aprovado_cliente'
+  const canComplete = isDono && task.stage === 'programar_publicacao'
+
+  return (
+    <div>
+      <div className="page-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button className="btn btn-secondary btn-icon" onClick={() => navigate(-1)}><ArrowLeft size={16} /></button>
+          <div>
+            <h1 style={{ fontSize: 20 }}>{task.title}</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#A8A3B8' }}>
+              <Building2 size={12} /> {task.client_name}
+              <span className="stage-badge" style={{ background: `${task.stage_color}20`, color: task.stage_color }}>{task.stage_name}</span>
+            </div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {canPickUp && <button className="btn btn-primary btn-sm" onClick={() => handleStageMove('em_producao')}>Iniciar</button>}
+          {canSubmitReview && <button className="btn btn-primary btn-sm" onClick={() => handleStageMove('revisao_interna')}><Send size={12} /> Enviar pra Revisao</button>}
+          {canMoveToApproval && <button className="btn btn-primary btn-sm" onClick={() => handleStageMove('aprovacao_interna')}>Enviar pra Aprovacao</button>}
+          {canApproveInternal && <><button className="btn btn-primary btn-sm" onClick={handleApprove}><CheckCircle size={12} /> Aprovar</button><button className="btn btn-danger btn-sm" onClick={() => setShowReject(true)}><XCircle size={12} /> Rejeitar</button></>}
+          {canApproveClient && <><button className="btn btn-primary btn-sm" onClick={handleApprove}><CheckCircle size={12} /> Aprovar</button><button className="btn btn-danger btn-sm" onClick={() => setShowReject(true)}><XCircle size={12} /> Rejeitar</button></>}
+          {canSchedule && <button className="btn btn-primary btn-sm" onClick={() => handleStageMove('programar_publicacao')}>Programar</button>}
+          {canComplete && <button className="btn btn-primary btn-sm" onClick={() => handleStageMove('concluido')}><CheckCircle size={12} /> Concluir</button>}
+        </div>
+      </div>
+
+      <div className="lead-detail">
+        {/* Left: Info */}
+        <div>
+          <div className="card" style={{ marginBottom: 16 }}>
+            {/* Edit toggle */}
+            {canEdit && !editing && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setEditing(true)}><Edit3 size={12} /> Editar</button>
+              </div>
+            )}
+            {editing && canEdit ? (
+              <>
+                <div className="form-group"><label>Titulo</label><input className="input" value={editData.title} onChange={e => setEditData((p: any) => ({ ...p, title: e.target.value }))} /></div>
+                <div className="form-group"><label>Descricao</label><textarea className="input" rows={3} value={editData.description} onChange={e => setEditData((p: any) => ({ ...p, description: e.target.value }))} /></div>
+                <div className="form-row">
+                  <div className="form-group"><label>Departamento</label><select className="select" value={editData.department_id} onChange={e => setEditData((p: any) => ({ ...p, department_id: e.target.value }))}><option value="">Nenhum</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
+                  <div className="form-group"><label>Responsavel</label><select className="select" value={editData.assigned_to} onChange={e => setEditData((p: any) => ({ ...p, assigned_to: e.target.value }))}><option value="">Ninguem</option>{users.filter(u => u.role === 'funcionario').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group"><label>Prazo</label><input className="input" type="date" value={editData.due_date} onChange={e => setEditData((p: any) => ({ ...p, due_date: e.target.value }))} /></div>
+                  <div className="form-group"><label>Prioridade</label><select className="select" value={editData.priority} onChange={e => setEditData((p: any) => ({ ...p, priority: e.target.value }))}><option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></div>
+                </div>
+                <div className="form-group"><label>Categoria</label><select className="select" value={editData.category_id} onChange={e => setEditData((p: any) => ({ ...p, category_id: e.target.value }))}><option value="">Nenhuma</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                <div className="form-row">
+                  <div className="form-group"><label>Link Drive (Arquivo Bruto)</label><input className="input" value={editData.drive_link_raw} onChange={e => setEditData((p: any) => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
+                  <div className="form-group"><label>Link Drive (Arquivo Pronto)</label><input className="input" value={editData.drive_link} onChange={e => setEditData((p: any) => ({ ...p, drive_link: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  <button className="btn btn-primary btn-sm" onClick={handleSaveEdit}><Save size={12} /> Salvar</button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setEditing(false)}><X size={12} /> Cancelar</button>
+                </div>
+              </>
+            ) : (
+              <>
+                {task.description && <div style={{ fontSize: 13, color: '#A8A3B8', marginBottom: 16, lineHeight: 1.6 }}>{task.description}</div>}
+                {/* Overdue warning */}
+                {task.due_date && new Date(task.due_date) < new Date() && task.stage !== 'concluido' && task.stage !== 'rejeitado' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: 'rgba(255,107,107,0.08)', borderRadius: 8, marginBottom: 12, fontSize: 12, color: '#FF6B6B', fontWeight: 600 }}>
+                    <AlertTriangle size={14} /> Tarefa atrasada! Prazo era {task.due_date.slice(0, 10)}
+                  </div>
+                )}
+                <div className="lead-info">
+                  <div className="lead-info-row"><span className="lead-info-label"><Building2 size={12} /> Cliente</span><span className="lead-info-value">{task.client_name}</span></div>
+                  {task.department_name && <div className="lead-info-row"><span className="lead-info-label">Departamento</span><span className="lead-info-value" style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, borderRadius: '50%', background: task.department_color }} />{task.department_name}</span></div>}
+                  {task.category_name && <div className="lead-info-row"><span className="lead-info-label">Categoria</span><span className="stage-badge" style={{ background: `${task.category_color}20`, color: task.category_color }}>{task.category_name}</span></div>}
+                  <div className="lead-info-row"><span className="lead-info-label"><User size={12} /> Responsavel</span><span className="lead-info-value">{task.assigned_name || 'Nao atribuido'}</span></div>
+                  <div className="lead-info-row"><span className="lead-info-label">Prioridade</span><span className="lead-info-value" style={{ color: task.priority === 'urgent' ? '#FF6B6B' : task.priority === 'high' ? '#FFAA83' : '#A8A3B8' }}>{task.priority}</span></div>
+                  {task.due_date && <div className="lead-info-row"><span className="lead-info-label"><Clock size={12} /> Prazo</span><span className="lead-info-value" style={{ color: new Date(task.due_date) < new Date() ? '#FF6B6B' : task.due_date && (new Date(task.due_date).getTime() - Date.now()) < 2 * 86400000 ? '#FBBC04' : undefined }}>{task.due_date.slice(0, 10)}{new Date(task.due_date) < new Date() ? ' (ATRASADO)' : (new Date(task.due_date).getTime() - Date.now()) < 2 * 86400000 ? ' (EM BREVE)' : ''}</span></div>}
+                  <div className="lead-info-row"><span className="lead-info-label">Criado por</span><span className="lead-info-value">{task.created_by_name}</span></div>
+                  <div className="lead-info-row"><span className="lead-info-label"><Clock size={12} /> Criado em</span><span className="lead-info-value">{new Date(task.created_at).toLocaleString('pt-BR')}</span></div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
+                  {task.drive_link_raw && <a href={task.drive_link_raw} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm"><ExternalLink size={12} /> Arquivo Bruto</a>}
+                  {task.drive_link && <a href={task.drive_link} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm"><ExternalLink size={12} /> Arquivo Pronto</a>}
+                </div>
+                {/* Timer */}
+                {(isFunc || isDono) && (
+                  <div style={{ marginTop: 16, padding: '12px 14px', background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: '#6B6580', textTransform: 'uppercase', fontWeight: 700, letterSpacing: 0.5 }}>Tempo Total</div>
+                        <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-heading)', color: totalTime > 0 ? '#FFB300' : '#6B6580' }}>{formatTime(totalTime + (timerRunning ? timerElapsed : 0))}</div>
+                      </div>
+                      {timerRunning ? (
+                        <button className="btn btn-danger btn-sm" onClick={handleStopTimer}>⏹ Parar</button>
+                      ) : (
+                        <button className="btn btn-primary btn-sm" onClick={handleStartTimer}>▶ Iniciar Timer</button>
+                      )}
+                    </div>
+                    {timerRunning && <div style={{ fontSize: 11, color: '#34C759', marginTop: 4 }}>⏱ Cronometro ativo: {formatTime(timerElapsed)}</div>}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Right: Comments/History/Attachments */}
+        <div>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap' }}>
+            <button className={`btn btn-sm ${activeTab === 'comments' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('comments')}><MessageCircle size={12} /> Comentarios ({comments.length})</button>
+            <button className={`btn btn-sm ${activeTab === 'history' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('history')}><GitBranch size={12} /> Historico</button>
+            <button className={`btn btn-sm ${activeTab === 'time' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('time')}><Clock size={12} /> Tempo ({formatTime(totalTime)})</button>
+            <button className={`btn btn-sm ${activeTab === 'attachments' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('attachments')}><Paperclip size={12} /> Anexos ({attachments.length})</button>
+          </div>
+
+          {activeTab === 'comments' && (
+            <div className="card" style={{ minHeight: 350 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                <input className="input" placeholder="Adicionar comentario..." value={commentText} onChange={e => setCommentText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleComment()} />
+                {!isCliente && <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, whiteSpace: 'nowrap', cursor: 'pointer', color: '#6B6580' }}><input type="checkbox" checked={isInternal} onChange={e => setIsInternal(e.target.checked)} />Interno</label>}
+                <button className="btn btn-primary btn-icon" onClick={handleComment}><Send size={16} /></button>
+              </div>
+              {[...comments].reverse().map(c => (
+                <div key={c.id} style={{ padding: '10px 12px', marginBottom: 6, borderRadius: 8, borderLeft: `3px solid ${c.is_internal ? '#FFB300' : '#34C759'}`, background: c.is_internal ? 'rgba(255,179,0,0.04)' : 'rgba(52,199,89,0.04)', border: `1px solid ${c.is_internal ? 'rgba(255,179,0,0.12)' : 'rgba(52,199,89,0.12)'}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>{c.user_name} <span style={{ fontSize: 10, color: '#6B6580', fontWeight: 400 }}>({c.user_role})</span></span>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: c.is_internal ? '#FFB300' : '#34C759' }}>{c.is_internal ? '🔒 INTERNO' : '👁 CLIENTE'}</span>
+                  </div>
+                  <div style={{ fontSize: 13 }}>{c.content}</div>
+                  <div style={{ fontSize: 10, color: '#6B6580', marginTop: 4 }}>{new Date(c.created_at).toLocaleString('pt-BR')}</div>
+                </div>
+              ))}
+              {comments.length === 0 && <div style={{ textAlign: 'center', color: '#6B6580', padding: 30 }}>Nenhum comentario</div>}
+            </div>
+          )}
+
+          {activeTab === 'history' && (
+            <div className="card" style={{ minHeight: 350 }}>
+              {history.map((h, i) => (
+                <div key={h.id} style={{ display: 'flex', gap: 10, padding: '8px 0', borderBottom: i < history.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#FFB300', marginTop: 5, flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: 13 }}>{h.from_stage_name ? `${h.from_stage_name} → ${h.to_stage_name}` : `Criado: ${h.to_stage_name}`}</div>
+                    {h.comment && <div style={{ fontSize: 12, color: '#A8A3B8', marginTop: 2 }}>{h.comment}</div>}
+                    <div style={{ fontSize: 10, color: '#6B6580' }}>{h.user_name} · {new Date(h.created_at).toLocaleString('pt-BR')}</div>
+                  </div>
+                </div>
+              ))}
+              {history.length === 0 && <div style={{ textAlign: 'center', color: '#6B6580', padding: 30 }}>Sem historico</div>}
+            </div>
+          )}
+
+          {activeTab === 'time' && (
+            <div className="card" style={{ minHeight: 350 }}>
+              <div style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-heading)', color: '#FFB300', marginBottom: 16 }}>
+                Total: {formatTime(totalTime)}
+              </div>
+              {timeEntries.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#6B6580', padding: 30 }}>Nenhum registro de tempo</div>
+              ) : timeEntries.map(te => (
+                <div key={te.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border-subtle)', fontSize: 13 }}>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{te.user_name}</div>
+                    <div style={{ fontSize: 11, color: '#6B6580' }}>{new Date(te.started_at).toLocaleString('pt-BR')}{te.ended_at ? ` → ${new Date(te.ended_at).toLocaleString('pt-BR')}` : ' (ativo)'}</div>
+                    {te.description && <div style={{ fontSize: 11, color: '#A8A3B8', marginTop: 2 }}>{te.description}</div>}
+                  </div>
+                  <div style={{ fontWeight: 700, color: te.ended_at ? '#A8A3B8' : '#34C759', fontFamily: 'var(--font-heading)' }}>
+                    {te.duration_seconds ? formatTime(te.duration_seconds) : '⏱ Ativo'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab === 'attachments' && (
+            <div className="card" style={{ minHeight: 350 }}>
+              {canEdit && (
+                <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+                  <input className="input" placeholder="URL do arquivo..." value={newAttUrl} onChange={e => setNewAttUrl(e.target.value)} style={{ flex: 2 }} />
+                  <input className="input" placeholder="Nome..." value={newAttName} onChange={e => setNewAttName(e.target.value)} style={{ flex: 1 }} />
+                  <button className="btn btn-primary btn-icon" onClick={handleAddAttachment} disabled={!newAttUrl || !newAttName}><Plus size={16} /></button>
+                </div>
+              )}
+              {attachments.map(a => (
+                <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                  <div><div style={{ fontSize: 13, fontWeight: 600 }}>{a.filename}</div><div style={{ fontSize: 10, color: '#6B6580' }}>{a.uploaded_by_name} · {new Date(a.created_at).toLocaleString('pt-BR')}</div></div>
+                  <a href={a.url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm"><Eye size={12} /> Ver</a>
+                </div>
+              ))}
+              {attachments.length === 0 && <div style={{ textAlign: 'center', color: '#6B6580', padding: 30 }}>Nenhum anexo</div>}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Reject modal */}
+      {showReject && (
+        <div className="modal-overlay" onClick={() => setShowReject(false)}><div className="modal" onClick={e => e.stopPropagation()}>
+          <h2>Rejeitar Tarefa</h2>
+          <div className="form-group"><label>Motivo da rejeicao *</label><textarea className="input" rows={3} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Descreva o que precisa ser alterado..." /></div>
+          <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowReject(false)}>Cancelar</button><button className="btn btn-danger" onClick={handleReject} disabled={!rejectReason.trim()}>Rejeitar</button></div>
+        </div></div>
+      )}
+    </div>
+  )
+}

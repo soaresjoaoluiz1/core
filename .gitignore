@@ -8,3 +8,18 @@ _opensquad/_browser_profile/
 docs/
 .superpowers/
 temp/
+
+# Dashboards
+client-dashboard/node_modules/
+client-dashboard/dist/
+client-dashboard/server/data/
+crm-dashboard/node_modules/
+crm-dashboard/dist/
+crm-dashboard/server/data/
+agency-hub/node_modules/
+agency-hub/dist/
+agency-hub/server/data/
+
+# Build artifacts
+*.db
+*.sqlite

@@ -1,0 +1,241 @@
+import { useState, useEffect } from 'react'
+import { useAuth } from '../context/AuthContext'
+import {
+  fetchAccounts,
+  fetchCompare,
+  fetchDailyCompare,
+  type MetaAccount,
+  type CompareResponse,
+  type DailyCompareResponse,
+  DAYS_MAP,
+} from '../lib/api'
+import Sidebar from '../components/Sidebar'
+import MetricCards from '../components/MetricCards'
+import SpendChart from '../components/SpendChart'
+import CampaignTable from '../components/CampaignTable'
+import FunnelChart from '../components/FunnelChart'
+import InstagramView from '../components/InstagramView'
+import CRMView from '../components/CRMView'
+import KiwifyView from '../components/KiwifyView'
+import GoogleAdsView from '../components/GoogleAdsView'
+import AnalyticsView from '../components/AnalyticsView'
+import OverviewView from '../components/OverviewView'
+import { Search, LogOut, BarChart3, Instagram, LineChart, LayoutDashboard } from 'lucide-react'
+
+const DATE_OPTIONS = [
+  { label: '7 dias', value: '7d' },
+  { label: '14 dias', value: '14d' },
+  { label: '30 dias', value: '30d' },
+  { label: '90 dias', value: '90d' },
+]
+
+type ClientTab = 'overview' | 'ads' | 'instagram' | 'googleads' | 'analytics'
+
+export default function Dashboard() {
+  const { user, logout } = useAuth()
+  const [accounts, setAccounts] = useState<MetaAccount[]>([])
+  const [selectedAccount, setSelectedAccount] = useState<MetaAccount | null>(null)
+  const [clientTab, setClientTab] = useState<ClientTab>('overview')
+  const [datePeriod, setDatePeriod] = useState('7d')
+  const [compareData, setCompareData] = useState<CompareResponse | null>(null)
+  const [campaignCompare, setCampaignCompare] = useState<CompareResponse | null>(null)
+  const [dailyCompare, setDailyCompare] = useState<DailyCompareResponse | null>(null)
+  const [loadingAccounts, setLoadingAccounts] = useState(true)
+  const [loadingData, setLoadingData] = useState(false)
+  const [search, setSearch] = useState('')
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
+
+  useEffect(() => {
+    fetchAccounts()
+      .then((accs) => {
+        setAccounts(accs)
+        if (accs.length > 0) setSelectedAccount(accs[0])
+      })
+      .finally(() => setLoadingAccounts(false))
+  }, [])
+
+  useEffect(() => {
+    if (!selectedAccount || (clientTab !== 'ads' && clientTab !== 'overview')) return
+    if (clientTab === 'overview') return // overview fetches its own data
+    setLoadingData(true)
+    const days = DAYS_MAP[datePeriod]
+
+    Promise.all([
+      fetchCompare(selectedAccount.id, days, 'account').catch(() => null),
+      fetchCompare(selectedAccount.id, days, 'campaign').catch(() => null),
+      fetchDailyCompare(selectedAccount.id, days).catch(() => null),
+    ])
+      .then(([acct, camp, daily]) => {
+        setCompareData(acct)
+        setCampaignCompare(camp)
+        setDailyCompare(daily)
+        setLastUpdate(new Date())
+      })
+      .finally(() => setLoadingData(false))
+  }, [selectedAccount, datePeriod, clientTab])
+
+  // Reset tab when switching accounts
+  useEffect(() => {
+    setClientTab('overview')
+  }, [selectedAccount])
+
+  const filteredAccounts = accounts.filter((a) =>
+    a.name.toLowerCase().includes(search.toLowerCase())
+  )
+
+  const current = compareData?.current?.[0] || null
+  const previous = compareData?.previous?.[0] || null
+
+  return (
+    <div className="dashboard">
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <img src="/logo-dros.png" alt="Dros" className="sidebar-logo" />
+          <div className="subtitle">Painel de Performance</div>
+        </div>
+
+        <div className="sidebar-search">
+          <Search size={14} className="search-icon" />
+          <input type="text" placeholder="Buscar conta..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <div className="account-list">
+          {loadingAccounts ? (
+            <div className="loading-container" style={{ minHeight: 200 }}><div className="spinner" /></div>
+          ) : (
+            filteredAccounts.map((account) => (
+              <Sidebar key={account.id} account={account} active={selectedAccount?.id === account.id} onClick={() => setSelectedAccount(account)} />
+            ))
+          )}
+        </div>
+
+        <div className="sidebar-footer">
+          <div className="user-name">{user?.name}</div>
+          <button className="logout-btn" onClick={logout} title="Sair"><LogOut size={16} /></button>
+        </div>
+      </aside>
+
+      <main className="main-content">
+        {!selectedAccount ? (
+          <div className="empty-state">
+            <div className="icon">📊</div>
+            <h3>Selecione uma conta</h3>
+            <p>Escolha uma conta na barra lateral para ver os dados.</p>
+          </div>
+        ) : (
+          <>
+            {/* Header with client name + tabs */}
+            <div className="main-header">
+              <h2>{selectedAccount.name}</h2>
+              <div className="client-tabs">
+                <button className={`client-tab ${clientTab === 'overview' ? 'active' : ''}`} onClick={() => setClientTab('overview')}>
+                  <LayoutDashboard size={14} /><span>Geral</span>
+                </button>
+                <button className={`client-tab ${clientTab === 'ads' ? 'active' : ''}`} onClick={() => setClientTab('ads')}>
+                  <BarChart3 size={14} /><span>Meta Ads</span>
+                </button>
+                <button className={`client-tab ${clientTab === 'instagram' ? 'active' : ''}`} onClick={() => setClientTab('instagram')}>
+                  <Instagram size={14} /><span>Instagram</span>
+                </button>
+                <button className={`client-tab ${clientTab === 'googleads' ? 'active' : ''}`} onClick={() => setClientTab('googleads')}>
+                  <BarChart3 size={14} /><span>Google Ads</span>
+                </button>
+                <button className={`client-tab ${clientTab === 'analytics' ? 'active' : ''}`} onClick={() => setClientTab('analytics')}>
+                  <LineChart size={14} /><span>Analytics</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Date selector (shown for all tabs) */}
+            <div className="date-bar">
+              <div className="date-selector">
+                {DATE_OPTIONS.map((opt) => (
+                  <button key={opt.value} className={`date-btn ${datePeriod === opt.value ? 'active' : ''}`} onClick={() => setDatePeriod(opt.value)}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tab: Overview */}
+            {clientTab === 'overview' && (
+              <OverviewView accountId={selectedAccount.id} accountName={selectedAccount.name} days={DAYS_MAP[datePeriod]} />
+            )}
+
+            {/* Tab: Meta Ads */}
+            {clientTab === 'ads' && (
+              <>
+                {loadingData ? (
+                  <div className="loading-container"><div className="spinner" /><span>Carregando dados...</span></div>
+                ) : !current ? (
+                  <div className="empty-state">
+                    <div className="icon">📭</div>
+                    <h3>Sem dados no periodo</h3>
+                    <p>Nenhum dado encontrado para os ultimos {DAYS_MAP[datePeriod]} dias.</p>
+                  </div>
+                ) : (
+                  <>
+                    <section className="dash-section">
+                      <MetricCards current={current} previous={previous} />
+                    </section>
+
+                    <section className="dash-section">
+                      <div className="section-title">Desempenho no Periodo</div>
+                      <div className="charts-grid">
+                        <div className="chart-card">
+                          <h3>Conversas Iniciadas</h3>
+                          <SpendChart currentData={dailyCompare?.current || []} previousData={dailyCompare?.previous || []} dataKey="messaging" label="Conversas" />
+                        </div>
+                        <div className="chart-card">
+                          <h3>Funil de Conversao</h3>
+                          <FunnelChart insight={current} />
+                        </div>
+                      </div>
+                      <div className="charts-grid">
+                        <div className="chart-card full-width">
+                          <h3>Valor Investido</h3>
+                          <SpendChart currentData={dailyCompare?.current || []} previousData={dailyCompare?.previous || []} dataKey="spend" label="Investimento" />
+                        </div>
+                      </div>
+                    </section>
+
+                    <section className="dash-section">
+                      <div className="section-title">Campanhas</div>
+                      <CampaignTable currentCampaigns={campaignCompare?.current || []} previousCampaigns={campaignCompare?.previous || []} />
+                    </section>
+
+                    <CRMView accountId={selectedAccount.id} accountName={selectedAccount.name} days={DAYS_MAP[datePeriod]} adSpend={current ? parseFloat(current.spend) : undefined} />
+
+                    <KiwifyView accountName={selectedAccount.name} days={DAYS_MAP[datePeriod]} adSpend={current ? parseFloat(current.spend) : undefined} />
+                  </>
+                )}
+              </>
+            )}
+
+            {/* Tab: Instagram */}
+            {clientTab === 'instagram' && (
+              <InstagramView accountName={selectedAccount.name} />
+            )}
+
+            {/* Tab: Google Ads */}
+            {clientTab === 'googleads' && (
+              <GoogleAdsView accountName={selectedAccount.name} days={DAYS_MAP[datePeriod]} />
+            )}
+
+            {/* Tab: Analytics */}
+            {clientTab === 'analytics' && (
+              <AnalyticsView accountName={selectedAccount.name} days={DAYS_MAP[datePeriod]} />
+            )}
+
+            {/* Footer */}
+            <div className="dashboard-footer">
+              <img src="/logo-dros.png" alt="Dros" style={{ height: 28 }} />
+              <span className="footer-update">
+                Ultima atualizacao: {lastUpdate?.toLocaleString('pt-BR') || '-'}
+              </span>
+            </div>
+          </>
+        )}
+      </main>
+    </div>
+  )
+}
