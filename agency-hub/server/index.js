@@ -84,7 +84,7 @@ app.put('/api/stages/:id', authenticate, (req, res) => {
 // Serve frontend (production)
 const distPath = resolve(__dirname, '../dist')
 app.use(express.static(distPath))
-app.get('*', (req, res) => {
+app.get('/{*path}', (req, res) => {
   res.sendFile(resolve(distPath, 'index.html'))
 })
 
