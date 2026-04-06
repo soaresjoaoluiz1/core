@@ -1,8 +1,10 @@
 const getToken = () => localStorage.getItem('dros_hub_token')
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '')
 
 export async function apiFetch<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
-  const res = await fetch(path, { ...opts, headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json', ...opts.headers } })
-  if (res.status === 401) { localStorage.removeItem('dros_hub_token'); window.location.href = '/login'; throw new Error('Unauthorized') }
+  const url = path.startsWith('/api') ? `${BASE}${path}` : path
+  const res = await fetch(url, { ...opts, headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json', ...opts.headers } })
+  if (res.status === 401) { localStorage.removeItem('dros_hub_token'); window.location.href = `${BASE}/login`; throw new Error('Unauthorized') }
   if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `API error: ${res.status}`) }
   return res.json()
 }
