@@ -17,7 +17,7 @@ crm-dashboard/node_modules/
 crm-dashboard/dist/
 crm-dashboard/server/data/
 agency-hub/node_modules/
-agency-hub/dist/
+# agency-hub/dist/ — included for deploy
 agency-hub/server/data/
 
 # Build artifacts
