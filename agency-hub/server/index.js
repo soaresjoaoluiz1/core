@@ -81,4 +81,11 @@ app.put('/api/stages/:id', authenticate, (req, res) => {
   res.json({ stage: db.prepare('SELECT * FROM pipeline_stages WHERE id = ?').get(req.params.id) })
 })
 
+// Serve frontend (production)
+const distPath = resolve(__dirname, '../dist')
+app.use(express.static(distPath))
+app.get('*', (req, res) => {
+  res.sendFile(resolve(distPath, 'index.html'))
+})
+
 app.listen(PORT, () => console.log(`[Dros Hub API] Running on http://localhost:${PORT}`))
