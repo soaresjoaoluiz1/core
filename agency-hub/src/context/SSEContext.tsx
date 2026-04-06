@@ -11,7 +11,8 @@ export function SSEProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const token = localStorage.getItem('dros_hub_token')
     if (!token) return
-    const es = new EventSource(`/api/events?token=${token}`)
+    const base = import.meta.env.BASE_URL.replace(/\/$/, '')
+    const es = new EventSource(`${base}/api/events?token=${token}`)
     es.onopen = () => setConnected(true)
     es.onerror = () => setConnected(false)
     for (const type of ['task:created', 'task:updated', 'task:stage_changed', 'task:comment', 'approval:pending', 'notification:new']) {
