@@ -54,7 +54,7 @@ export default function Tasks() {
   const [showBulkAssign, setShowBulkAssign] = useState(false)
 
   useEffect(() => {
-    if (isDono) { fetchClients().then(setClients); fetchDepartments().then(setDepartments); fetchUsers().then(setAllUsers) }
+    if (isDono || isFunc) { fetchClients().then(setClients); fetchDepartments().then(setDepartments); fetchUsers().then(setAllUsers) }
     fetchCategories().then(setCategories); fetchStages().then(setStages)
   }, [isDono])
 
