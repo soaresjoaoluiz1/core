@@ -208,7 +208,7 @@ export default function Pipeline() {
           </div>
           <div className="form-row">
             <div className="form-group"><label>Departamento</label><select className="select" value={newTask.department_id} onChange={e => setNewTask(p => ({ ...p, department_id: e.target.value }))}><option value="">Nenhum</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
-            <div className="form-group"><label>Responsavel</label><select className="select" value={newTask.assigned_to} onChange={e => setNewTask(p => ({ ...p, assigned_to: e.target.value }))}><option value="">Ninguem</option>{allUsers.filter((u: any) => u.role === 'funcionario').map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+            <div className="form-group"><label>Responsavel</label><select className="select" value={newTask.assigned_to} onChange={e => setNewTask(p => ({ ...p, assigned_to: e.target.value }))}><option value="">Ninguem</option>{allUsers.filter((u: any) => u.role !== 'cliente').map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
           </div>
           <div className="form-row">
             <div className="form-group"><label>Prazo</label><input className="input" type="date" value={newTask.due_date} onChange={e => setNewTask(p => ({ ...p, due_date: e.target.value }))} /></div>

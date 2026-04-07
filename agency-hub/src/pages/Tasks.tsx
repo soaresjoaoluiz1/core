@@ -144,7 +144,7 @@ export default function Tasks() {
         <select className="select" value={filterStage} onChange={e => { setFilterStage(e.target.value); setPage(1) }}><option value="">Todas etapas</option>{stages.map(s => <option key={s.id} value={s.slug}>{s.name}</option>)}</select>
         {isDono && <select className="select" value={filterClient} onChange={e => { setFilterClient(e.target.value); setPage(1) }}><option value="">Todos clientes</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}
         <select className="select" value={filterPriority} onChange={e => { setFilterPriority(e.target.value); setPage(1) }}><option value="">Prioridades</option><option value="urgent">Urgente</option><option value="high">Alta</option><option value="normal">Normal</option><option value="low">Baixa</option></select>
-        {isDono && <select className="select" value={filterAssigned} onChange={e => { setFilterAssigned(e.target.value); setPage(1) }}><option value="">Todos</option>{allUsers.filter(u => u.role === 'funcionario').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>}
+        {isDono && <select className="select" value={filterAssigned} onChange={e => { setFilterAssigned(e.target.value); setPage(1) }}><option value="">Todos</option>{allUsers.filter(u => u.role !== 'cliente').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>}
       </div>
       <div className="filter-bar" style={{ marginTop: -6 }}>
         <input className="input" type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1) }} style={{ width: 150 }} />
@@ -221,7 +221,7 @@ export default function Tasks() {
           </div>
           <div className="form-row">
             <div className="form-group"><label>Departamento</label><select className="select" value={newTask.department_id} onChange={e => setNewTask(p => ({ ...p, department_id: e.target.value }))}><option value="">Nenhum</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
-            <div className="form-group"><label>Responsavel</label><select className="select" value={newTask.assigned_to} onChange={e => setNewTask(p => ({ ...p, assigned_to: e.target.value }))}><option value="">Ninguem</option>{allUsers.filter(u => u.role === 'funcionario').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+            <div className="form-group"><label>Responsavel</label><select className="select" value={newTask.assigned_to} onChange={e => setNewTask(p => ({ ...p, assigned_to: e.target.value }))}><option value="">Ninguem</option>{allUsers.filter(u => u.role !== 'cliente').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
           </div>
           <div className="form-row">
             <div className="form-group"><label>Prazo</label><input className="input" type="date" value={newTask.due_date} onChange={e => setNewTask(p => ({ ...p, due_date: e.target.value }))} /></div>
@@ -246,7 +246,7 @@ export default function Tasks() {
           <h2>Atribuir {selected.size} tarefas</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <button className="btn btn-secondary" onClick={() => handleBulkAssign(null)} style={{ justifyContent: 'flex-start' }}>Remover responsavel</button>
-            {allUsers.filter(u => u.role === 'funcionario').map(u => <button key={u.id} className="btn btn-secondary" onClick={() => handleBulkAssign(u.id)} style={{ justifyContent: 'flex-start' }}><User size={14} /> {u.name}</button>)}
+            {allUsers.filter(u => u.role !== 'cliente').map(u => <button key={u.id} className="btn btn-secondary" onClick={() => handleBulkAssign(u.id)} style={{ justifyContent: 'flex-start' }}><User size={14} /> {u.name}</button>)}
           </div>
         </div></div>
       )}
