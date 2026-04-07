@@ -81,6 +81,28 @@ app.put('/api/stages/:id', authenticate, (req, res) => {
   res.json({ stage: db.prepare('SELECT * FROM pipeline_stages WHERE id = ?').get(req.params.id) })
 })
 
+// Public onboard endpoints (no auth)
+app.get('/api/onboard/:token', (req, res) => {
+  const client = db.prepare('SELECT id, name FROM clients WHERE onboard_token = ?').get(req.params.token)
+  if (!client) return res.status(404).json({ error: 'Link invalido' })
+  const existing = db.prepare('SELECT id FROM client_onboard WHERE client_id = ?').get(client.id)
+  res.json({ client: { id: client.id, name: client.name }, filled: !!existing })
+})
+
+app.post('/api/onboard/:token', (req, res) => {
+  const client = db.prepare('SELECT id, name FROM clients WHERE onboard_token = ?').get(req.params.token)
+  if (!client) return res.status(404).json({ error: 'Link invalido' })
+  const { data } = req.body
+  if (!data) return res.status(400).json({ error: 'Dados obrigatorios' })
+  const existing = db.prepare('SELECT id FROM client_onboard WHERE client_id = ?').get(client.id)
+  if (existing) {
+    db.prepare("UPDATE client_onboard SET data = ?, updated_at = datetime('now') WHERE client_id = ?").run(JSON.stringify(data), client.id)
+  } else {
+    db.prepare('INSERT INTO client_onboard (client_id, data) VALUES (?, ?)').run(client.id, JSON.stringify(data))
+  }
+  res.json({ ok: true })
+})
+
 // Serve frontend (production)
 const distPath = resolve(__dirname, '../dist')
 app.use(express.static(distPath))

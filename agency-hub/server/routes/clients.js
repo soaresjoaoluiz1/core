@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import bcrypt from 'bcryptjs'
+import { randomBytes } from 'crypto'
 import db from '../db.js'
 import { requireRole } from '../middleware/auth.js'
 
@@ -26,8 +27,9 @@ router.post('/', requireRole('dono'), (req, res) => {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   if (db.prepare('SELECT id FROM clients WHERE slug = ?').get(slug)) return res.status(400).json({ error: 'Cliente ja existe' })
 
-  // Create client
-  const result = db.prepare('INSERT INTO clients (name, slug, contact_name, contact_email, contact_phone, logo_url, drive_folder) VALUES (?, ?, ?, ?, ?, ?, ?)').run(name, slug, contact_name || name, contact_email, contact_phone, logo_url, drive_folder || null)
+  // Create client with onboard token
+  const onboard_token = randomBytes(16).toString('hex')
+  const result = db.prepare('INSERT INTO clients (name, slug, contact_name, contact_email, contact_phone, logo_url, drive_folder, onboard_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(name, slug, contact_name || name, contact_email, contact_phone, logo_url, drive_folder || null, onboard_token)
   const clientId = result.lastInsertRowid
 
   // Auto-create user with role 'cliente'
@@ -90,6 +92,12 @@ router.put('/:id/credentials/:credId', requireRole('dono'), (req, res) => {
 router.delete('/:id/credentials/:credId', requireRole('dono'), (req, res) => {
   db.prepare('DELETE FROM client_credentials WHERE id = ?').run(req.params.credId)
   res.json({ ok: true })
+})
+
+// Onboard - get responses (authenticated)
+router.get('/:id/onboard', requireRole('dono'), (req, res) => {
+  const onboard = db.prepare('SELECT * FROM client_onboard WHERE client_id = ?').get(req.params.id)
+  res.json({ onboard: onboard ? { ...onboard, data: JSON.parse(onboard.data) } : null })
 })
 
 export default router

@@ -107,3 +107,6 @@ export const fetchClientCredentials = (clientId: number) => apiFetch<{ credentia
 export const createClientCredential = (clientId: number, data: Partial<ClientCredential>) => apiFetch(`/api/clients/${clientId}/credentials`, { method: 'POST', body: JSON.stringify(data) })
 export const updateClientCredential = (clientId: number, credId: number, data: Partial<ClientCredential>) => apiFetch(`/api/clients/${clientId}/credentials/${credId}`, { method: 'PUT', body: JSON.stringify(data) })
 export const deleteClientCredential = (clientId: number, credId: number) => apiFetch(`/api/clients/${clientId}/credentials/${credId}`, { method: 'DELETE' })
+
+// Onboard
+export const fetchClientOnboard = (clientId: number) => apiFetch<{ onboard: { data: Record<string, string>; created_at: string; updated_at: string } | null }>(`/api/clients/${clientId}/onboard`)

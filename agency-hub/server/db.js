@@ -258,6 +258,27 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN approval_link TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN approval_text TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN publish_date TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN publish_objective TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN onboard_token TEXT") } catch {}
+
+// Client onboard responses table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS client_onboard (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id   INTEGER NOT NULL UNIQUE,
+    data        TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+  );
+`)
+
+// Backfill onboard_token for existing clients
+import { randomBytes } from 'crypto'
+const clientsNoToken = db.prepare('SELECT id FROM clients WHERE onboard_token IS NULL').all()
+if (clientsNoToken.length > 0) {
+  const stmt = db.prepare('UPDATE clients SET onboard_token = ? WHERE id = ?')
+  clientsNoToken.forEach(c => stmt.run(randomBytes(16).toString('hex'), c.id))
+}
 
 console.log('[DB] SQLite ready at', dbPath)
 export default db

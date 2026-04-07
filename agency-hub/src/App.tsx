@@ -15,6 +15,7 @@ import Departments from './pages/Departments'
 import Categories from './pages/Categories'
 import SettingsPage from './pages/Settings'
 import Notifications from './pages/Notifications'
+import Onboard from './pages/Onboard'
 
 function AppRoutes() {
   const { user, loading } = useAuth()
@@ -57,5 +58,12 @@ function AppRoutes() {
 }
 
 export default function App() {
-  return <BrowserRouter basename={import.meta.env.BASE_URL}><AuthProvider><AppRoutes /></AuthProvider></BrowserRouter>
+  return (
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
+      <Routes>
+        <Route path="/onboard/:token" element={<Onboard />} />
+        <Route path="/*" element={<AuthProvider><AppRoutes /></AuthProvider>} />
+      </Routes>
+    </BrowserRouter>
+  )
 }

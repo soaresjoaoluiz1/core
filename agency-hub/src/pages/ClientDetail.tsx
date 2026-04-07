@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchClient, updateClient, fetchClientCredentials, createClientCredential, updateClientCredential, deleteClientCredential, apiFetch, type Client, type ClientCredential, type User as UserT } from '../lib/api'
-import { ArrowLeft, Building2, ExternalLink, Plus, Edit3, Save, X, Trash2, Eye, EyeOff, Key, Users, Lock } from 'lucide-react'
+import { fetchClient, updateClient, fetchClientCredentials, createClientCredential, updateClientCredential, deleteClientCredential, fetchClientOnboard, apiFetch, type Client, type ClientCredential, type User as UserT } from '../lib/api'
+import { ArrowLeft, Building2, ExternalLink, Plus, Edit3, Save, X, Trash2, Eye, EyeOff, Key, Users, Lock, ClipboardCopy, FileText, CheckCircle } from 'lucide-react'
 
 const PLATFORMS = ['Facebook', 'Instagram', 'Google Ads', 'Google Analytics', 'Google Meu Negocio', 'Meta Business', 'TikTok', 'LinkedIn', 'YouTube', 'Twitter/X', 'Pinterest', 'Kiwify', 'Hotmart', 'RD Station', 'Outro']
 
@@ -13,7 +13,7 @@ export default function ClientDetail() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState<any>({})
-  const [activeTab, setActiveTab] = useState<'info' | 'credentials' | 'users'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'credentials' | 'users' | 'onboard'>('info')
   const [clientUsers, setClientUsers] = useState<any[]>([])
   const [resetPassId, setResetPassId] = useState<number | null>(null)
   const [newPassword, setNewPassword] = useState('')
@@ -22,6 +22,9 @@ export default function ClientDetail() {
   const [showPasswords, setShowPasswords] = useState<Set<number>>(new Set())
   const [editCredId, setEditCredId] = useState<number | null>(null)
   const [editCredData, setEditCredData] = useState<any>({})
+  const [onboardData, setOnboardData] = useState<Record<string, string> | null>(null)
+  const [onboardLoading, setOnboardLoading] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   const load = async () => {
     if (!id) return
@@ -55,6 +58,18 @@ export default function ClientDetail() {
 
   const togglePass = (credId: number) => setShowPasswords(prev => { const n = new Set(prev); n.has(credId) ? n.delete(credId) : n.add(credId); return n })
 
+  const loadOnboard = async () => {
+    if (!id || onboardData !== null) return
+    setOnboardLoading(true)
+    try {
+      const res = await fetchClientOnboard(+id)
+      setOnboardData(res.onboard?.data || null)
+    } catch {} finally { setOnboardLoading(false) }
+  }
+
+  const onboardLink = client ? `${window.location.origin}${import.meta.env.BASE_URL}onboard/${(client as any).onboard_token}` : ''
+  const copyLink = () => { navigator.clipboard.writeText(onboardLink); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000) }
+
   if (loading) return <div className="loading-container"><div className="spinner" /></div>
   if (!client) return <div className="empty-state"><h3>Cliente nao encontrado</h3></div>
 
@@ -69,6 +84,7 @@ export default function ClientDetail() {
           <button className={`btn btn-sm ${activeTab === 'info' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('info')}>Dados</button>
           <button className={`btn btn-sm ${activeTab === 'credentials' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('credentials')}><Key size={12} /> Acessos ({credentials.length})</button>
           <button className={`btn btn-sm ${activeTab === 'users' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('users')}><Users size={12} /> Usuarios ({clientUsers.length})</button>
+          <button className={`btn btn-sm ${activeTab === 'onboard' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setActiveTab('onboard'); loadOnboard() }}><FileText size={12} /> Onboard</button>
         </div>
       </div>
 
@@ -259,6 +275,56 @@ export default function ClientDetail() {
                   </>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Onboard tab */}
+      {activeTab === 'onboard' && (
+        <div>
+          {/* Link do formulario */}
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+              <div>
+                <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Link do Formulario de Entrada</h3>
+                <p style={{ fontSize: 12, color: '#9B96B0' }}>Envie este link para o cliente preencher o briefing.</p>
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={copyLink} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <ClipboardCopy size={12} /> {linkCopied ? 'Copiado!' : 'Copiar Link'}
+              </button>
+            </div>
+            <div style={{ marginTop: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: 8, fontSize: 12, color: '#6E6887', wordBreak: 'break-all', fontFamily: 'monospace' }}>
+              {onboardLink}
+            </div>
+          </div>
+
+          {/* Respostas */}
+          {onboardLoading ? (
+            <div className="loading-container"><div className="spinner" /></div>
+          ) : onboardData ? (
+            <div className="card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <CheckCircle size={16} style={{ color: '#34C759' }} />
+                <h3 style={{ fontSize: 14, fontWeight: 600 }}>Formulario Respondido</h3>
+              </div>
+              <div className="lead-info">
+                {Object.entries(onboardData).map(([key, val]) => {
+                  if (!val) return null
+                  const label = key.replace(/_/g, ' ').replace(/^acesso /, 'Acesso: ').replace(/\b\w/g, c => c.toUpperCase())
+                  return (
+                    <div key={key} className="lead-info-row">
+                      <span className="lead-info-label">{label}</span>
+                      <span className="lead-info-value" style={{ whiteSpace: 'pre-wrap' }}>{val}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="card" style={{ textAlign: 'center', padding: 32, color: '#9B96B0' }}>
+              <FileText size={32} style={{ marginBottom: 8, opacity: 0.4 }} />
+              <p>Formulario ainda nao respondido pelo cliente.</p>
             </div>
           )}
         </div>
