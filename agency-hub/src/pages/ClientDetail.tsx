@@ -22,7 +22,7 @@ export default function ClientDetail() {
   const [showPasswords, setShowPasswords] = useState<Set<number>>(new Set())
   const [editCredId, setEditCredId] = useState<number | null>(null)
   const [editCredData, setEditCredData] = useState<any>({})
-  const [onboardData, setOnboardData] = useState<Record<string, string> | null>(null)
+  const [onboardEntries, setOnboardEntries] = useState<any[]>([])
   const [onboardLoading, setOnboardLoading] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
 
@@ -59,11 +59,11 @@ export default function ClientDetail() {
   const togglePass = (credId: number) => setShowPasswords(prev => { const n = new Set(prev); n.has(credId) ? n.delete(credId) : n.add(credId); return n })
 
   const loadOnboard = async () => {
-    if (!id || onboardData !== null) return
+    if (!id || onboardEntries.length > 0) return
     setOnboardLoading(true)
     try {
       const res = await fetchClientOnboard(+id)
-      setOnboardData(res.onboard?.data || null)
+      setOnboardEntries(res.entries || [])
     } catch {} finally { setOnboardLoading(false) }
   }
 
@@ -302,25 +302,30 @@ export default function ClientDetail() {
           {/* Respostas */}
           {onboardLoading ? (
             <div className="loading-container"><div className="spinner" /></div>
-          ) : onboardData ? (
-            <div className="card">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                <CheckCircle size={16} style={{ color: '#34C759' }} />
-                <h3 style={{ fontSize: 14, fontWeight: 600 }}>Formulario Respondido</h3>
+          ) : onboardEntries.length > 0 ? (
+            onboardEntries.map((entry, idx) => (
+              <div className="card" key={entry.id} style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <CheckCircle size={16} style={{ color: '#34C759' }} />
+                    <h3 style={{ fontSize: 14, fontWeight: 600 }}>Resposta {onboardEntries.length > 1 ? `#${onboardEntries.length - idx}` : ''}</h3>
+                  </div>
+                  <span style={{ fontSize: 11, color: '#6E6887' }}>{new Date(entry.created_at).toLocaleString('pt-BR')}</span>
+                </div>
+                <div className="lead-info">
+                  {Object.entries(entry.data as Record<string, string>).map(([key, val]) => {
+                    if (!val) return null
+                    const label = key.replace(/_/g, ' ').replace(/^acesso /, 'Acesso: ').replace(/\b\w/g, (c: string) => c.toUpperCase())
+                    return (
+                      <div key={key} className="lead-info-row">
+                        <span className="lead-info-label">{label}</span>
+                        <span className="lead-info-value" style={{ whiteSpace: 'pre-wrap' }}>{String(val)}</span>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-              <div className="lead-info">
-                {Object.entries(onboardData).map(([key, val]) => {
-                  if (!val) return null
-                  const label = key.replace(/_/g, ' ').replace(/^acesso /, 'Acesso: ').replace(/\b\w/g, c => c.toUpperCase())
-                  return (
-                    <div key={key} className="lead-info-row">
-                      <span className="lead-info-label">{label}</span>
-                      <span className="lead-info-value" style={{ whiteSpace: 'pre-wrap' }}>{val}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+            ))
           ) : (
             <div className="card" style={{ textAlign: 'center', padding: 32, color: '#9B96B0' }}>
               <FileText size={32} style={{ marginBottom: 8, opacity: 0.4 }} />

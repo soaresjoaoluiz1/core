@@ -264,13 +264,26 @@ try { db.exec("ALTER TABLE clients ADD COLUMN onboard_token TEXT") } catch {}
 db.exec(`
   CREATE TABLE IF NOT EXISTS client_onboard (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_id   INTEGER NOT NULL UNIQUE,
+    client_id   INTEGER NOT NULL,
     data        TEXT NOT NULL,
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
   );
 `)
+
+// Migrate: remove UNIQUE constraint from client_onboard (allow multiple responses)
+try {
+  const hasUnique = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'client_onboard'").get()
+  if (hasUnique && hasUnique.sql.includes('UNIQUE')) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS client_onboard_new (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id INTEGER NOT NULL, data TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE);
+      INSERT INTO client_onboard_new SELECT * FROM client_onboard;
+      DROP TABLE client_onboard;
+      ALTER TABLE client_onboard_new RENAME TO client_onboard;
+    `)
+  }
+} catch {}
 
 // Backfill onboard_token for existing clients
 import { randomBytes } from 'crypto'

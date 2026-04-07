@@ -96,7 +96,14 @@ export default function Onboard() {
 
   if (loading) return <div style={styles.page}><div style={styles.card}><p style={{ color: '#9B96B0' }}>Carregando...</p></div></div>
   if (error) return <div style={styles.page}><div style={styles.card}><h2 style={{ color: '#EA4335' }}>Link invalido</h2><p style={{ color: '#9B96B0', marginTop: 8 }}>Este formulario nao existe ou ja expirou.</p></div></div>
-  if (filled && !submitted) return <div style={styles.page}><div style={styles.card}><div style={styles.checkCircle}>&#10003;</div><h2>Formulario ja respondido</h2><p style={{ color: '#9B96B0', marginTop: 8 }}>Obrigado, {clientName}! Suas respostas ja foram recebidas.</p></div></div>
+  if (filled && !submitted && current === 0 && Object.keys(data).length === 0) return (
+    <div style={styles.page}><div style={styles.card}>
+      <div style={styles.checkCircle}>&#10003;</div>
+      <h2>Formulario ja respondido</h2>
+      <p style={{ color: '#9B96B0', marginTop: 8, marginBottom: 20 }}>Obrigado, {clientName}! Suas respostas ja foram recebidas.</p>
+      <button onClick={() => setFilled(false)} style={{ ...styles.btn, background: '#F5A623', color: '#06040C', fontWeight: 700 }}>Responder novamente</button>
+    </div></div>
+  )
   if (submitted) return <div style={styles.page}><div style={styles.card}><div style={styles.checkCircle}>&#10003;</div><h2>Formulario enviado!</h2><p style={{ color: '#9B96B0', marginTop: 8 }}>Obrigado, {clientName}! Nossa equipe vai analisar e entrar em contato.</p></div></div>
 
   const step = STEPS[current]

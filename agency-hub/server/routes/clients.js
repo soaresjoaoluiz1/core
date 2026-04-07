@@ -94,10 +94,10 @@ router.delete('/:id/credentials/:credId', requireRole('dono'), (req, res) => {
   res.json({ ok: true })
 })
 
-// Onboard - get responses (authenticated)
+// Onboard - get all responses (authenticated)
 router.get('/:id/onboard', requireRole('dono'), (req, res) => {
-  const onboard = db.prepare('SELECT * FROM client_onboard WHERE client_id = ?').get(req.params.id)
-  res.json({ onboard: onboard ? { ...onboard, data: JSON.parse(onboard.data) } : null })
+  const entries = db.prepare('SELECT * FROM client_onboard WHERE client_id = ? ORDER BY created_at DESC').all(req.params.id)
+  res.json({ entries: entries.map(e => ({ ...e, data: JSON.parse(e.data) })) })
 })
 
 export default router

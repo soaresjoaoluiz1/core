@@ -109,4 +109,5 @@ export const updateClientCredential = (clientId: number, credId: number, data: P
 export const deleteClientCredential = (clientId: number, credId: number) => apiFetch(`/api/clients/${clientId}/credentials/${credId}`, { method: 'DELETE' })
 
 // Onboard
-export const fetchClientOnboard = (clientId: number) => apiFetch<{ onboard: { data: Record<string, string>; created_at: string; updated_at: string } | null }>(`/api/clients/${clientId}/onboard`)
+export interface OnboardEntry { id: number; client_id: number; data: Record<string, string>; created_at: string; updated_at: string }
+export const fetchClientOnboard = (clientId: number) => apiFetch<{ entries: OnboardEntry[] }>(`/api/clients/${clientId}/onboard`)
