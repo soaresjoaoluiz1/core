@@ -94,12 +94,7 @@ app.post('/api/onboard/:token', (req, res) => {
   if (!client) return res.status(404).json({ error: 'Link invalido' })
   const { data } = req.body
   if (!data) return res.status(400).json({ error: 'Dados obrigatorios' })
-  const existing = db.prepare('SELECT id FROM client_onboard WHERE client_id = ?').get(client.id)
-  if (existing) {
-    db.prepare("UPDATE client_onboard SET data = ?, updated_at = datetime('now') WHERE client_id = ?").run(JSON.stringify(data), client.id)
-  } else {
-    db.prepare('INSERT INTO client_onboard (client_id, data) VALUES (?, ?)').run(client.id, JSON.stringify(data))
-  }
+  db.prepare('INSERT INTO client_onboard (client_id, data) VALUES (?, ?)').run(client.id, JSON.stringify(data))
   res.json({ ok: true })
 })
 
