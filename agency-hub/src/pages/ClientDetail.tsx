@@ -312,7 +312,7 @@ export default function ClientDetail() {
               {allServices.map(s => {
                 const svc = clientSvcs.find(cs => cs.id === s.id)
                 const isOn = !!svc
-                const nameLower = s.name.toLowerCase()
+                const fields = (s as any).fields || []
                 return (
                   <div key={s.id} style={{ borderRadius: 10, border: `1px solid ${isOn ? s.color : 'rgba(255,255,255,0.08)'}`, background: isOn ? `${s.color}10` : 'rgba(255,255,255,0.02)', overflow: 'hidden' }}>
                     <button onClick={() => toggleService(s.id)}
@@ -320,27 +320,21 @@ export default function ClientDetail() {
                       <span style={{ width: 20, height: 20, borderRadius: 5, border: `2px solid ${isOn ? s.color : 'rgba(255,255,255,0.12)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, background: isOn ? s.color : 'transparent', color: isOn ? '#06040C' : 'transparent', flexShrink: 0 }}>{isOn ? '\u2713' : ''}</span>
                       {s.name}
                     </button>
-                    {isOn && nameLower.includes('linha editorial') && (
-                      <div style={{ padding: '0 16px 12px', display: 'flex', gap: 10 }}>
-                        <div style={{ flex: 1 }}>
-                          <label style={{ fontSize: 11, color: '#6E6887', display: 'block', marginBottom: 4 }}>Posts/mes</label>
-                          <input className="input" style={{ padding: '6px 10px', fontSize: 13 }} value={svc?.config.posts || ''} onChange={e => updateSvcConfig(s.id, 'posts', e.target.value)} placeholder="Ex: 15" />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <label style={{ fontSize: 11, color: '#6E6887', display: 'block', marginBottom: 4 }}>Videos/mes</label>
-                          <input className="input" style={{ padding: '6px 10px', fontSize: 13 }} value={svc?.config.videos || ''} onChange={e => updateSvcConfig(s.id, 'videos', e.target.value)} placeholder="Ex: 4" />
-                        </div>
-                      </div>
-                    )}
-                    {isOn && nameLower.includes('trafego') && (
+                    {isOn && fields.length > 0 && (
                       <div style={{ padding: '0 16px 12px', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                        {['Relatorio Mensal', 'Relatorio Semanal'].map(opt => {
-                          const key = opt.toLowerCase().replace(/\s+/g, '_')
+                        {fields.map((f: any) => {
+                          const key = f.name.toLowerCase().replace(/\s+/g, '_')
+                          if (f.type === 'quantity') return (
+                            <div key={key} style={{ minWidth: 120 }}>
+                              <label style={{ fontSize: 11, color: '#6E6887', display: 'block', marginBottom: 4 }}>{f.name}/mes</label>
+                              <input className="input" style={{ padding: '6px 10px', fontSize: 13 }} value={svc?.config[key] || ''} onChange={e => updateSvcConfig(s.id, key, e.target.value)} placeholder="Qtd" />
+                            </div>
+                          )
                           const checked = svc?.config[key] === 'sim'
                           return (
-                            <button key={opt} onClick={() => updateSvcConfig(s.id, key, checked ? '' : 'sim')}
+                            <button key={key} onClick={() => updateSvcConfig(s.id, key, checked ? '' : 'sim')}
                               style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${checked ? '#34C759' : 'rgba(255,255,255,0.08)'}`, background: checked ? 'rgba(52,199,89,0.1)' : 'transparent', color: checked ? '#34C759' : '#9B96B0', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
-                              {checked ? '\u2713 ' : ''}{opt}
+                              {checked ? '\u2713 ' : ''}{f.name}
                             </button>
                           )
                         })}

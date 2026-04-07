@@ -201,6 +201,7 @@ db.exec(`
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT NOT NULL UNIQUE,
     color       TEXT NOT NULL DEFAULT '#5DADE2',
+    fields      TEXT NOT NULL DEFAULT '[]',
     is_active   INTEGER NOT NULL DEFAULT 1,
     created_at  TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
   );
@@ -255,14 +256,23 @@ if (!catExists) {
 const svcExists = db.prepare('SELECT id FROM services LIMIT 1').get()
 if (!svcExists) {
   const svcs = [
-    { name: 'Gestao de Trafego', color: '#FF6B6B' },
-    { name: 'Linha Editorial', color: '#5DADE2' },
-    { name: 'Criacao de Site', color: '#34C759' },
+    { name: 'Gestao de Trafego', color: '#FF6B6B', fields: [{ name: 'Relatorio Mensal', type: 'toggle' }, { name: 'Relatorio Semanal', type: 'toggle' }] },
+    { name: 'Linha Editorial', color: '#5DADE2', fields: [{ name: 'Posts', type: 'quantity' }, { name: 'Videos', type: 'quantity' }] },
+    { name: 'Criacao de Site', color: '#34C759', fields: [] },
   ]
-  const stmt = db.prepare('INSERT INTO services (name, color) VALUES (?, ?)')
-  svcs.forEach(s => stmt.run(s.name, s.color))
+  const stmt = db.prepare('INSERT INTO services (name, color, fields) VALUES (?, ?, ?)')
+  svcs.forEach(s => stmt.run(s.name, s.color, JSON.stringify(s.fields)))
   console.log('[DB] Services seeded')
 }
+// Backfill fields for existing services
+try {
+  const noFields = db.prepare("SELECT id, name FROM services WHERE fields = '[]' OR fields IS NULL").all()
+  noFields.forEach(s => {
+    const n = s.name.toLowerCase()
+    if (n.includes('trafego')) db.prepare('UPDATE services SET fields = ? WHERE id = ?').run(JSON.stringify([{ name: 'Relatorio Mensal', type: 'toggle' }, { name: 'Relatorio Semanal', type: 'toggle' }]), s.id)
+    if (n.includes('editorial')) db.prepare('UPDATE services SET fields = ? WHERE id = ?').run(JSON.stringify([{ name: 'Posts', type: 'quantity' }, { name: 'Videos', type: 'quantity' }]), s.id)
+  })
+} catch {}
 
 // Seed pipeline stages
 const stageExists = db.prepare('SELECT id FROM pipeline_stages LIMIT 1').get()
@@ -292,6 +302,7 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN publish_date TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN publish_objective TEXT") } catch {}
 try { db.exec("ALTER TABLE clients ADD COLUMN onboard_token TEXT") } catch {}
 try { db.exec("ALTER TABLE client_services ADD COLUMN config TEXT DEFAULT '{}'") } catch {}
+try { db.exec("ALTER TABLE services ADD COLUMN fields TEXT DEFAULT '[]'") } catch {}
 
 // Client onboard responses table
 db.exec(`

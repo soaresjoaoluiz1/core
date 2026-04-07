@@ -84,26 +84,30 @@ app.put('/api/stages/:id', authenticate, (req, res) => {
 
 // Services CRUD
 app.get('/api/services', authenticate, (req, res) => {
-  res.json({ services: db.prepare('SELECT * FROM services WHERE is_active = 1 ORDER BY name').all() })
+  const rows = db.prepare('SELECT * FROM services WHERE is_active = 1 ORDER BY name').all()
+  res.json({ services: rows.map(r => ({ ...r, fields: JSON.parse(r.fields || '[]') })) })
 })
 app.post('/api/services', authenticate, (req, res) => {
   if (req.user.role !== 'dono') return res.status(403).json({ error: 'Forbidden' })
-  const { name, color } = req.body
+  const { name, color, fields } = req.body
   if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
-  const result = db.prepare('INSERT INTO services (name, color) VALUES (?, ?)').run(name, color || '#5DADE2')
-  res.json({ service: db.prepare('SELECT * FROM services WHERE id = ?').get(result.lastInsertRowid) })
+  const result = db.prepare('INSERT INTO services (name, color, fields) VALUES (?, ?, ?)').run(name, color || '#5DADE2', JSON.stringify(fields || []))
+  const svc = db.prepare('SELECT * FROM services WHERE id = ?').get(result.lastInsertRowid)
+  res.json({ service: { ...svc, fields: JSON.parse(svc.fields || '[]') } })
 })
 app.put('/api/services/:id', authenticate, (req, res) => {
   if (req.user.role !== 'dono') return res.status(403).json({ error: 'Forbidden' })
-  const { name, color, is_active } = req.body
+  const { name, color, fields, is_active } = req.body
   const sets = []; const params = []
   if (name !== undefined) { sets.push('name = ?'); params.push(name) }
   if (color !== undefined) { sets.push('color = ?'); params.push(color) }
+  if (fields !== undefined) { sets.push('fields = ?'); params.push(JSON.stringify(fields)) }
   if (is_active !== undefined) { sets.push('is_active = ?'); params.push(is_active) }
   if (!sets.length) return res.status(400).json({ error: 'Nothing to update' })
   params.push(req.params.id)
   db.prepare(`UPDATE services SET ${sets.join(', ')} WHERE id = ?`).run(...params)
-  res.json({ service: db.prepare('SELECT * FROM services WHERE id = ?').get(req.params.id) })
+  const svc = db.prepare('SELECT * FROM services WHERE id = ?').get(req.params.id)
+  res.json({ service: { ...svc, fields: JSON.parse(svc.fields || '[]') } })
 })
 
 // Client services (with config)
