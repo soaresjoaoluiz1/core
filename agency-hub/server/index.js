@@ -105,7 +105,24 @@ app.post('/api/onboard/:token', (req, res) => {
 
 // Serve frontend (production)
 const distPath = resolve(__dirname, '../dist')
+import { readFileSync } from 'fs'
+let indexHtml = ''
+try { indexHtml = readFileSync(resolve(distPath, 'index.html'), 'utf-8') } catch {}
+
 app.use(express.static(distPath))
+
+// Dynamic OG tags for onboard links (WhatsApp preview)
+app.get('/onboard/:token', (req, res) => {
+  if (!indexHtml) return res.sendFile(resolve(distPath, 'index.html'))
+  const client = db.prepare('SELECT name FROM clients WHERE onboard_token = ?').get(req.params.token)
+  const name = client ? client.name : 'Cliente'
+  const html = indexHtml
+    .replace('<title>Dros Hub</title>', `<title>Formulario de Entrada — ${name}</title>`)
+    .replace('content="Dros Hub — Gestao de Projetos"', `content="Formulario de Entrada — ${name}"`)
+    .replace('content="Plataforma interna da Dros Agencia para gestao de projetos, aprovacoes e entregas."', `content="Preencha o formulario de entrada da ${name} para comecarmos o trabalho."`)
+  res.send(html)
+})
+
 app.get('/{*path}', (req, res) => {
   res.sendFile(resolve(distPath, 'index.html'))
 })
