@@ -195,6 +195,24 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, is_read, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_notif_task ON notifications(task_id);
+
+  -- Services (agency services offered to clients)
+  CREATE TABLE IF NOT EXISTS services (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL UNIQUE,
+    color       TEXT NOT NULL DEFAULT '#5DADE2',
+    is_active   INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', '-3 hours'))
+  );
+
+  -- Client-service many-to-many
+  CREATE TABLE IF NOT EXISTS client_services (
+    client_id   INTEGER NOT NULL,
+    service_id  INTEGER NOT NULL,
+    PRIMARY KEY (client_id, service_id),
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+    FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
+  );
 `)
 
 // Seed dono
@@ -230,6 +248,19 @@ if (!catExists) {
   const stmt = db.prepare('INSERT INTO task_categories (name, color) VALUES (?, ?)')
   cats.forEach(c => stmt.run(c.name, c.color))
   console.log('[DB] Categories seeded')
+}
+
+// Seed services
+const svcExists = db.prepare('SELECT id FROM services LIMIT 1').get()
+if (!svcExists) {
+  const svcs = [
+    { name: 'Gestao de Trafego', color: '#FF6B6B' },
+    { name: 'Linha Editorial', color: '#5DADE2' },
+    { name: 'Criacao de Site', color: '#34C759' },
+  ]
+  const stmt = db.prepare('INSERT INTO services (name, color) VALUES (?, ?)')
+  svcs.forEach(s => stmt.run(s.name, s.color))
+  console.log('[DB] Services seeded')
 }
 
 // Seed pipeline stages

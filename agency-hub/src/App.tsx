@@ -15,6 +15,7 @@ import Departments from './pages/Departments'
 import Categories from './pages/Categories'
 import SettingsPage from './pages/Settings'
 import Notifications from './pages/Notifications'
+import Services from './pages/Services'
 import Onboard from './pages/Onboard'
 
 function AppRoutes() {
@@ -47,6 +48,7 @@ function AppRoutes() {
               <Route path="/team" element={<Team />} />
               <Route path="/departments" element={<Departments />} />
               <Route path="/categories" element={<Categories />} />
+              <Route path="/services" element={<Services />} />
               <Route path="/settings" element={<SettingsPage />} />
             </>}
             <Route path="*" element={<Navigate to={home} />} />

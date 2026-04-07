@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchClient, updateClient, fetchClientCredentials, createClientCredential, updateClientCredential, deleteClientCredential, fetchClientOnboard, apiFetch, type Client, type ClientCredential, type User as UserT } from '../lib/api'
-import { ArrowLeft, Building2, ExternalLink, Plus, Edit3, Save, X, Trash2, Eye, EyeOff, Key, Users, Lock, ClipboardCopy, FileText, CheckCircle } from 'lucide-react'
+import { fetchClient, updateClient, fetchClientCredentials, createClientCredential, updateClientCredential, deleteClientCredential, fetchClientOnboard, fetchServices, fetchClientServices, updateClientServices, apiFetch, type Client, type ClientCredential, type User as UserT, type Service } from '../lib/api'
+import { ArrowLeft, Building2, ExternalLink, Plus, Edit3, Save, X, Trash2, Eye, EyeOff, Key, Users, Lock, ClipboardCopy, FileText, CheckCircle, Briefcase } from 'lucide-react'
 
 const PLATFORMS = ['Facebook', 'Instagram', 'Google Ads', 'Google Analytics', 'Google Meu Negocio', 'Meta Business', 'TikTok', 'LinkedIn', 'YouTube', 'Twitter/X', 'Pinterest', 'Kiwify', 'Hotmart', 'RD Station', 'Outro']
 
@@ -13,7 +13,7 @@ export default function ClientDetail() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
   const [editData, setEditData] = useState<any>({})
-  const [activeTab, setActiveTab] = useState<'info' | 'credentials' | 'users' | 'onboard'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'credentials' | 'users' | 'services' | 'onboard'>('info')
   const [clientUsers, setClientUsers] = useState<any[]>([])
   const [resetPassId, setResetPassId] = useState<number | null>(null)
   const [newPassword, setNewPassword] = useState('')
@@ -23,6 +23,9 @@ export default function ClientDetail() {
   const [editCredId, setEditCredId] = useState<number | null>(null)
   const [editCredData, setEditCredData] = useState<any>({})
   const [onboardEntries, setOnboardEntries] = useState<any[]>([])
+  const [allServices, setAllServices] = useState<Service[]>([])
+  const [clientServiceIds, setClientServiceIds] = useState<number[]>([])
+  const [servicesLoaded, setServicesLoaded] = useState(false)
   const [onboardLoading, setOnboardLoading] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
 
@@ -67,6 +70,17 @@ export default function ClientDetail() {
     } catch {} finally { setOnboardLoading(false) }
   }
 
+  const loadServices = async () => {
+    if (!id || servicesLoaded) return
+    const [all, mine] = await Promise.all([fetchServices(), fetchClientServices(+id)])
+    setAllServices(all); setClientServiceIds(mine.map(s => s.id)); setServicesLoaded(true)
+  }
+  const toggleService = async (sid: number) => {
+    const next = clientServiceIds.includes(sid) ? clientServiceIds.filter(x => x !== sid) : [...clientServiceIds, sid]
+    setClientServiceIds(next)
+    await updateClientServices(+id!, next)
+  }
+
   const onboardLink = client ? `${window.location.origin}${import.meta.env.BASE_URL}onboard/${(client as any).onboard_token}` : ''
   const copyLink = () => { navigator.clipboard.writeText(onboardLink); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000) }
 
@@ -84,6 +98,7 @@ export default function ClientDetail() {
           <button className={`btn btn-sm ${activeTab === 'info' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('info')}>Dados</button>
           <button className={`btn btn-sm ${activeTab === 'credentials' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('credentials')}><Key size={12} /> Acessos ({credentials.length})</button>
           <button className={`btn btn-sm ${activeTab === 'users' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('users')}><Users size={12} /> Usuarios ({clientUsers.length})</button>
+          <button className={`btn btn-sm ${activeTab === 'services' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setActiveTab('services'); loadServices() }}><Briefcase size={12} /> Servicos</button>
           <button className={`btn btn-sm ${activeTab === 'onboard' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setActiveTab('onboard'); loadOnboard() }}><FileText size={12} /> Onboard</button>
         </div>
       </div>
@@ -275,6 +290,28 @@ export default function ClientDetail() {
                   </>
                 )}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Services tab */}
+      {activeTab === 'services' && (
+        <div className="card">
+          <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Servicos contratados</h3>
+          {allServices.length === 0 ? (
+            <p style={{ color: '#9B96B0', fontSize: 13 }}>Nenhum servico cadastrado ainda. Crie servicos na area de configuracoes.</p>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {allServices.map(s => {
+                const isOn = clientServiceIds.includes(s.id)
+                return (
+                  <button key={s.id} onClick={() => toggleService(s.id)}
+                    style={{ padding: '8px 16px', borderRadius: 8, border: `1px solid ${isOn ? s.color : 'rgba(255,255,255,0.08)'}`, background: isOn ? `${s.color}20` : 'rgba(255,255,255,0.03)', color: isOn ? s.color : '#9B96B0', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', fontWeight: isOn ? 600 : 400, transition: 'all 0.2s' }}>
+                    {isOn ? '\u2713 ' : ''}{s.name}
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>

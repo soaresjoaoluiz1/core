@@ -82,6 +82,46 @@ app.put('/api/stages/:id', authenticate, (req, res) => {
   res.json({ stage: db.prepare('SELECT * FROM pipeline_stages WHERE id = ?').get(req.params.id) })
 })
 
+// Services CRUD
+app.get('/api/services', authenticate, (req, res) => {
+  res.json({ services: db.prepare('SELECT * FROM services WHERE is_active = 1 ORDER BY name').all() })
+})
+app.post('/api/services', authenticate, (req, res) => {
+  if (req.user.role !== 'dono') return res.status(403).json({ error: 'Forbidden' })
+  const { name, color } = req.body
+  if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
+  const result = db.prepare('INSERT INTO services (name, color) VALUES (?, ?)').run(name, color || '#5DADE2')
+  res.json({ service: db.prepare('SELECT * FROM services WHERE id = ?').get(result.lastInsertRowid) })
+})
+app.put('/api/services/:id', authenticate, (req, res) => {
+  if (req.user.role !== 'dono') return res.status(403).json({ error: 'Forbidden' })
+  const { name, color, is_active } = req.body
+  const sets = []; const params = []
+  if (name !== undefined) { sets.push('name = ?'); params.push(name) }
+  if (color !== undefined) { sets.push('color = ?'); params.push(color) }
+  if (is_active !== undefined) { sets.push('is_active = ?'); params.push(is_active) }
+  if (!sets.length) return res.status(400).json({ error: 'Nothing to update' })
+  params.push(req.params.id)
+  db.prepare(`UPDATE services SET ${sets.join(', ')} WHERE id = ?`).run(...params)
+  res.json({ service: db.prepare('SELECT * FROM services WHERE id = ?').get(req.params.id) })
+})
+
+// Client services
+app.get('/api/clients/:id/services', authenticate, (req, res) => {
+  const services = db.prepare('SELECT s.* FROM services s JOIN client_services cs ON cs.service_id = s.id WHERE cs.client_id = ? AND s.is_active = 1 ORDER BY s.name').all(req.params.id)
+  res.json({ services })
+})
+app.put('/api/clients/:id/services', authenticate, (req, res) => {
+  if (req.user.role !== 'dono') return res.status(403).json({ error: 'Forbidden' })
+  const { service_ids } = req.body
+  db.prepare('DELETE FROM client_services WHERE client_id = ?').run(req.params.id)
+  if (service_ids?.length) {
+    const stmt = db.prepare('INSERT INTO client_services (client_id, service_id) VALUES (?, ?)')
+    service_ids.forEach(sid => stmt.run(req.params.id, sid))
+  }
+  res.json({ ok: true })
+})
+
 // Public onboard endpoints (no auth)
 app.get('/api/onboard/:token', (req, res) => {
   const client = db.prepare('SELECT id, name FROM clients WHERE onboard_token = ?').get(req.params.token)
