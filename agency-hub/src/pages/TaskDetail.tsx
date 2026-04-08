@@ -38,7 +38,7 @@ export default function TaskDetail() {
   const isDono = user?.role === 'dono'
   const isFunc = user?.role === 'funcionario'
   const isCliente = user?.role === 'cliente'
-  const canEdit = isDono || (isFunc && task?.assigned_to === user?.id)
+  const canEdit = isDono || (isFunc && ((task as any)?.assignees?.some((a: any) => a.user_id === user?.id) || task?.assigned_to === user?.id))
 
   const loadTask = useCallback(async () => {
     if (!id) return
