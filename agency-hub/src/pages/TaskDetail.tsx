@@ -44,7 +44,7 @@ export default function TaskDetail() {
     if (!id) return
     const data = await fetchTask(+id)
     setTask(data.task); setComments(data.comments); setHistory(data.history); setAttachments(data.attachments)
-    setEditData({ title: data.task.title, description: data.task.description || '', due_date: data.task.due_date?.slice(0, 10) || '', priority: data.task.priority, department_id: data.task.department_id || '', assigned_to: data.task.assigned_to || '', category_id: data.task.category_id || '', drive_link: data.task.drive_link || '', drive_link_raw: data.task.drive_link_raw || '', approval_link: data.task.approval_link || '', approval_text: data.task.approval_text || '', publish_date: data.task.publish_date || '', publish_objective: data.task.publish_objective || '' })
+    setEditData({ title: data.task.title, description: data.task.description || '', due_date: data.task.due_date?.slice(0, 10) || '', priority: data.task.priority, department_id: data.task.department_id || '', assigned_to: (data.task.assignees || []).map((a: any) => String(a.user_id)), category_id: data.task.category_id || '', drive_link: data.task.drive_link || '', drive_link_raw: data.task.drive_link_raw || '', approval_link: data.task.approval_link || '', approval_text: data.task.approval_text || '', publish_date: data.task.publish_date || '', publish_objective: data.task.publish_objective || '' })
     setTimeEntries(data.timeEntries || []); setTotalTime(data.totalTimeSeconds || 0)
     if (data.activeTimer) { setActiveTimerEntry(data.activeTimer); setTimerRunning(true) } else { setActiveTimerEntry(null); setTimerRunning(false) }
   }, [id])
@@ -77,7 +77,7 @@ export default function TaskDetail() {
 
   const handleSaveEdit = async () => {
     if (!task) return
-    await updateTask(task.id, { ...editData, department_id: editData.department_id ? +editData.department_id : null, assigned_to: editData.assigned_to ? +editData.assigned_to : null, category_id: editData.category_id ? +editData.category_id : null })
+    await updateTask(task.id, { ...editData, department_id: editData.department_id ? +editData.department_id : null, assigned_to: (editData.assigned_to || []).map(Number), category_id: editData.category_id ? +editData.category_id : null })
     setEditing(false); loadTask()
   }
 
@@ -157,7 +157,7 @@ export default function TaskDetail() {
                 <div className="form-group"><label>Descricao</label><textarea className="input" rows={3} value={editData.description} onChange={e => setEditData((p: any) => ({ ...p, description: e.target.value }))} /></div>
                 <div className="form-row">
                   <div className="form-group"><label>Departamento</label><select className="select" value={editData.department_id} onChange={e => setEditData((p: any) => ({ ...p, department_id: e.target.value }))}><option value="">Nenhum</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
-                  <div className="form-group"><label>Responsavel</label><select className="select" value={editData.assigned_to} onChange={e => setEditData((p: any) => ({ ...p, assigned_to: e.target.value }))}><option value="">Ninguem</option>{users.filter((u: any) => u.role !== 'cliente' && u.is_active).map((u: any) => <option key={u.id} value={u.id}>{u.name}{u.departments?.length ? ` (${u.departments.map((d: any) => d.name).join(', ')})` : ''}</option>)}</select></div>
+                  <div className="form-group"><label>Responsaveis</label><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{users.filter((u: any) => u.role !== 'cliente' && u.is_active).map((u: any) => { const sel = (editData.assigned_to || []).includes(String(u.id)); return <button type="button" key={u.id} onClick={() => setEditData((p: any) => ({ ...p, assigned_to: sel ? p.assigned_to.filter((x: string) => x !== String(u.id)) : [...(p.assigned_to || []), String(u.id)] }))} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${sel ? '#34C759' : 'rgba(255,255,255,0.08)'}`, background: sel ? 'rgba(52,199,89,0.12)' : 'transparent', color: sel ? '#34C759' : '#9B96B0', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>{sel ? '\u2713 ' : ''}{u.name}</button> })}</div></div>
                 </div>
                 <div className="form-row">
                   <div className="form-group"><label>Prazo</label><input className="input" type="date" value={editData.due_date} onChange={e => setEditData((p: any) => ({ ...p, due_date: e.target.value }))} /></div>

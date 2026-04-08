@@ -304,6 +304,27 @@ try { db.exec("ALTER TABLE clients ADD COLUMN onboard_token TEXT") } catch {}
 try { db.exec("ALTER TABLE client_services ADD COLUMN config TEXT DEFAULT '{}'") } catch {}
 try { db.exec("ALTER TABLE services ADD COLUMN fields TEXT DEFAULT '[]'") } catch {}
 
+// Task assignees (multi-assignee support)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS task_assignees (
+    task_id   INTEGER NOT NULL,
+    user_id   INTEGER NOT NULL,
+    PRIMARY KEY (task_id, user_id),
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+`)
+// Migrate existing assigned_to to task_assignees
+try {
+  const tasksWithAssigned = db.prepare('SELECT id, assigned_to FROM tasks WHERE assigned_to IS NOT NULL').all()
+  const existing = db.prepare('SELECT task_id FROM task_assignees LIMIT 1').get()
+  if (tasksWithAssigned.length > 0 && !existing) {
+    const stmt = db.prepare('INSERT OR IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)')
+    tasksWithAssigned.forEach(t => stmt.run(t.id, t.assigned_to))
+    console.log(`[DB] Migrated ${tasksWithAssigned.length} task assignments to task_assignees`)
+  }
+} catch {}
+
 // Client onboard responses table
 db.exec(`
   CREATE TABLE IF NOT EXISTS client_onboard (
