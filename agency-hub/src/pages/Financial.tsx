@@ -2,9 +2,12 @@ import { useState, useEffect } from 'react'
 import {
   fetchFinancialOverview, fetchFinancialDashboard, recordPayment, fetchExpenses, fetchExpenseCategories,
   createExpense, deleteExpense, copyRecurringExpenses, fetchDRE, formatBRL,
-  type FinancialOverview, type FinancialClient, type MonthlyRevenue, type ExpenseCategory, type ExpensesByCategory, type DRE
+  fetchInstallments, createInstallment, deleteInstallment,
+  fetchExtraRevenue, createExtraRevenue, deleteExtraRevenue, fetchClients,
+  type FinancialOverview, type FinancialClient, type MonthlyRevenue, type ExpenseCategory, type ExpensesByCategory, type DRE,
+  type Installment, type ExtraRevenue, type Client
 } from '../lib/api'
-import { DollarSign, AlertTriangle, CheckCircle, Clock, Plus, Trash2, TrendingUp, TrendingDown, Copy } from 'lucide-react'
+import { DollarSign, AlertTriangle, CheckCircle, Clock, Plus, Trash2, TrendingUp, TrendingDown, Copy, CreditCard, Receipt } from 'lucide-react'
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts'
 
 const MONTH_NAMES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
@@ -21,7 +24,7 @@ function ChartTip({ active, payload, label }: any) {
   )
 }
 
-type Tab = 'receita' | 'despesas' | 'dre'
+type Tab = 'receita' | 'despesas' | 'parcelas' | 'extras' | 'dre'
 
 export default function Financial() {
   const [tab, setTab] = useState<Tab>('receita')
@@ -45,6 +48,18 @@ export default function Financial() {
 
   // DRE state
   const [dre, setDre] = useState<DRE | null>(null)
+
+  // Parcelas state
+  const [installments, setInstallments] = useState<Installment[]>([])
+  const [showNewInst, setShowNewInst] = useState(false)
+  const [newInst, setNewInst] = useState({ name: '', total_amount: '', installment_count: '', start_month: '', category_id: '' })
+
+  // Extras state
+  const [extras, setExtras] = useState<ExtraRevenue[]>([])
+  const [extrasTotal, setExtrasTotal] = useState(0)
+  const [clients, setClients] = useState<Client[]>([])
+  const [showNewExtra, setShowNewExtra] = useState(false)
+  const [newExtra, setNewExtra] = useState({ client_id: '', description: '', amount: '', paid_at: '' })
 
   const [loading, setLoading] = useState(true)
 
@@ -72,9 +87,22 @@ export default function Financial() {
     setDre(d)
   }
 
+  const loadParcelas = async () => {
+    const items = await fetchInstallments().catch(() => [])
+    setInstallments(items as Installment[])
+  }
+
+  const loadExtras = async () => {
+    const [data, cls] = await Promise.all([
+      fetchExtraRevenue(month).catch(() => ({ items: [], total: 0 })),
+      fetchClients().catch(() => [])
+    ])
+    setExtras((data as any).items || []); setExtrasTotal((data as any).total || 0); setClients(cls as Client[])
+  }
+
   const load = async () => {
     setLoading(true)
-    await Promise.all([loadReceita(), loadDespesas(), loadDRE()])
+    await Promise.all([loadReceita(), loadDespesas(), loadDRE(), loadParcelas(), loadExtras()])
     setLoading(false)
   }
 
@@ -102,6 +130,28 @@ export default function Financial() {
   const handleDeleteExpense = async (id: number) => {
     if (!confirm('Remover esta despesa?')) return
     await deleteExpense(id); load()
+  }
+
+  const handleAddInstallment = async () => {
+    if (!newInst.name || !newInst.total_amount || !newInst.installment_count || !newInst.start_month) return
+    await createInstallment({ name: newInst.name, total_amount: parseFloat(newInst.total_amount), installment_count: parseInt(newInst.installment_count), start_month: newInst.start_month, category_id: newInst.category_id ? +newInst.category_id : undefined })
+    setShowNewInst(false); setNewInst({ name: '', total_amount: '', installment_count: '', start_month: '', category_id: '' }); load()
+  }
+
+  const handleDeleteInstallment = async (id: number) => {
+    if (!confirm('Remover parcelamento e todas as parcelas associadas?')) return
+    await deleteInstallment(id); load()
+  }
+
+  const handleAddExtra = async () => {
+    if (!newExtra.description || !newExtra.amount) return
+    await createExtraRevenue({ client_id: newExtra.client_id ? +newExtra.client_id : undefined, description: newExtra.description, amount: parseFloat(newExtra.amount), reference_month: month, paid_at: newExtra.paid_at || undefined })
+    setShowNewExtra(false); setNewExtra({ client_id: '', description: '', amount: '', paid_at: '' }); load()
+  }
+
+  const handleDeleteExtra = async (id: number) => {
+    if (!confirm('Remover esta receita extra?')) return
+    await deleteExtraRevenue(id); load()
   }
 
   const handleCopyRecurring = async () => {
@@ -138,7 +188,9 @@ export default function Financial() {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
         <button className={`btn btn-sm ${tab === 'receita' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab('receita')}>Receita</button>
+        <button className={`btn btn-sm ${tab === 'extras' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab('extras')}><Receipt size={12} /> Receitas Extras</button>
         <button className={`btn btn-sm ${tab === 'despesas' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab('despesas')}>Despesas</button>
+        <button className={`btn btn-sm ${tab === 'parcelas' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab('parcelas')}><CreditCard size={12} /> Parcelas</button>
         <button className={`btn btn-sm ${tab === 'dre' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setTab('dre')}>DRE</button>
       </div>
 
@@ -277,6 +329,76 @@ export default function Financial() {
         )}
       </>}
 
+      {/* ========== PARCELAS TAB ========== */}
+      {tab === 'parcelas' && <>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button className="btn btn-primary btn-sm" onClick={() => { setNewInst(p => ({ ...p, start_month: month })); setShowNewInst(true) }}><Plus size={14} /> Novo Parcelamento</button>
+        </div>
+        {installments.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: 40, color: '#6B6580' }}>Nenhum parcelamento cadastrado.</div>
+        ) : (
+          <div className="table-card"><div style={{ overflowX: 'auto' }}>
+            <table className="campaign-table">
+              <thead><tr><th>Nome</th><th className="right">Total</th><th className="right">Parcelas</th><th className="right">Valor Parcela</th><th>Inicio</th><th>Fim</th><th>Categoria</th><th></th></tr></thead>
+              <tbody>
+                {installments.map(inst => {
+                  const [y, m] = inst.start_month.split('-').map(Number)
+                  const endDate = new Date(y, m - 1 + inst.installment_count - 1, 1)
+                  const endMonth = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}`
+                  return (
+                    <tr key={inst.id}>
+                      <td style={{ fontWeight: 600 }}>{inst.name}</td>
+                      <td className="right">{formatBRL(inst.total_amount)}</td>
+                      <td className="right">{inst.installment_count}x</td>
+                      <td className="right" style={{ fontWeight: 600, color: '#FF6B6B' }}>{formatBRL(inst.installment_amount)}</td>
+                      <td>{formatMonth(inst.start_month)}</td>
+                      <td>{formatMonth(endMonth)}</td>
+                      <td>{inst.category_name ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: inst.category_color }} />{inst.category_name}</span> : '-'}</td>
+                      <td className="right"><button onClick={() => handleDeleteInstallment(inst.id)} style={{ background: 'transparent', border: 'none', color: '#FF6B6B', cursor: 'pointer' }}><Trash2 size={14} /></button></td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div></div>
+        )}
+      </>}
+
+      {/* ========== EXTRAS TAB ========== */}
+      {tab === 'extras' && <>
+        <div className="metrics-grid" style={{ marginBottom: 20, gridTemplateColumns: '1fr' }}>
+          <div className="card" style={{ textAlign: 'center', borderColor: 'rgba(52,199,89,0.2)' }}>
+            <div style={{ fontSize: 11, color: '#34C759', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Total Receitas Extras — {formatMonth(month)}</div>
+            <div style={{ fontSize: 28, fontWeight: 800, fontFamily: 'var(--font-heading)', color: '#34C759' }}>{formatBRL(extrasTotal)}</div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowNewExtra(true)}><Plus size={14} /> Nova Receita Extra</button>
+        </div>
+
+        {extras.length === 0 ? (
+          <div className="card" style={{ textAlign: 'center', padding: 40, color: '#6B6580' }}>Nenhuma receita extra em {formatMonth(month)}.</div>
+        ) : (
+          <div className="table-card"><div style={{ overflowX: 'auto' }}>
+            <table className="campaign-table">
+              <thead><tr><th>Descricao</th><th>Cliente</th><th className="right">Valor</th><th>Pago em</th><th></th></tr></thead>
+              <tbody>
+                {extras.map(e => (
+                  <tr key={e.id}>
+                    <td style={{ fontWeight: 600 }}>{e.description}</td>
+                    <td style={{ color: '#9B96B0' }}>{e.client_name || '-'}</td>
+                    <td className="right" style={{ fontWeight: 700, color: '#34C759' }}>{formatBRL(e.amount)}</td>
+                    <td style={{ color: '#6B6580', fontSize: 12 }}>{e.paid_at || '-'}</td>
+                    <td className="right"><button onClick={() => handleDeleteExtra(e.id)} style={{ background: 'transparent', border: 'none', color: '#FF6B6B', cursor: 'pointer' }}><Trash2 size={14} /></button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div></div>
+        )}
+      </>}
+
       {/* ========== DRE TAB ========== */}
       {tab === 'dre' && dre && <>
         <div className="card" style={{ marginBottom: 20 }}>
@@ -287,6 +409,8 @@ export default function Financial() {
               <span style={{ color: '#34C759' }}>RECEITA BRUTA</span>
               <span style={{ color: '#34C759' }}>{formatBRL(dre.revenue)}</span>
             </div>
+            {(dre as any).mensalidades > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0 6px 16px', fontSize: 13, color: '#A8A3B8' }}><span>Mensalidades</span><span>{formatBRL((dre as any).mensalidades)}</span></div>}
+            {(dre as any).extraRevenue > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0 6px 16px', fontSize: 13, color: '#A8A3B8' }}><span>Receitas Extras</span><span>{formatBRL((dre as any).extraRevenue)}</span></div>}
 
             <div style={{ padding: '8px 0 4px', fontSize: 11, color: '#6B6580', textTransform: 'uppercase', letterSpacing: 1, marginTop: 12 }}>Despesas Fixas</div>
             {dre.categories.filter(c => c.type === 'fixed').map(c => (
@@ -358,6 +482,52 @@ export default function Financial() {
             <div className="form-group"><label>Data do Pagamento</label><input className="input" type="date" value={payDate} onChange={e => setPayDate(e.target.value)} /></div>
             {payModal.penalty > 0 && <div style={{ padding: '8px 12px', background: 'rgba(255,107,107,0.08)', borderRadius: 8, fontSize: 12, color: '#FF6B6B', marginBottom: 12 }}><AlertTriangle size={12} /> Multa: {formatBRL(payModal.penalty)} ({payModal.days_late} dias)</div>}
             <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setPayModal(null)}>Cancelar</button><button className="btn btn-primary" onClick={handlePay} disabled={saving}>{saving ? 'Salvando...' : 'Confirmar'}</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* New Installment Modal */}
+      {showNewInst && (
+        <div className="modal-overlay" onClick={() => setShowNewInst(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
+            <h2>Novo Parcelamento</h2>
+            <div className="form-group"><label>Nome</label><input className="input" value={newInst.name} onChange={e => setNewInst(p => ({ ...p, name: e.target.value }))} placeholder="Ex: Camera Sony A7III, Notebook Dell..." /></div>
+            <div className="form-row">
+              <div className="form-group"><label>Valor Total (R$)</label><input className="input" type="number" step="0.01" value={newInst.total_amount} onChange={e => setNewInst(p => ({ ...p, total_amount: e.target.value }))} /></div>
+              <div className="form-group"><label>Parcelas</label><input className="input" type="number" value={newInst.installment_count} onChange={e => setNewInst(p => ({ ...p, installment_count: e.target.value }))} placeholder="12" /></div>
+            </div>
+            {newInst.total_amount && newInst.installment_count && <p style={{ fontSize: 13, color: '#FFB300', marginBottom: 12 }}>Parcela: {formatBRL(parseFloat(newInst.total_amount) / parseInt(newInst.installment_count || '1'))}/mes</p>}
+            <div className="form-row">
+              <div className="form-group"><label>Mes Inicio</label><input className="input" type="month" value={newInst.start_month} onChange={e => setNewInst(p => ({ ...p, start_month: e.target.value }))} /></div>
+              <div className="form-group"><label>Categoria</label>
+                <select className="select" value={newInst.category_id} onChange={e => setNewInst(p => ({ ...p, category_id: e.target.value }))}>
+                  <option value="">Emprestimos/Parcelas</option>
+                  {expCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNewInst(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleAddInstallment}>Criar Parcelamento</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* New Extra Revenue Modal */}
+      {showNewExtra && (
+        <div className="modal-overlay" onClick={() => setShowNewExtra(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
+            <h2>Nova Receita Extra — {formatMonth(month)}</h2>
+            <div className="form-group"><label>Cliente (opcional)</label>
+              <select className="select" value={newExtra.client_id} onChange={e => setNewExtra(p => ({ ...p, client_id: e.target.value }))}>
+                <option value="">Sem cliente</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="form-group"><label>Descricao</label><input className="input" value={newExtra.description} onChange={e => setNewExtra(p => ({ ...p, description: e.target.value }))} placeholder="Ex: Criacao de site, servico extra, consultoria..." /></div>
+            <div className="form-row">
+              <div className="form-group"><label>Valor (R$)</label><input className="input" type="number" step="0.01" value={newExtra.amount} onChange={e => setNewExtra(p => ({ ...p, amount: e.target.value }))} /></div>
+              <div className="form-group"><label>Data Pagamento</label><input className="input" type="date" value={newExtra.paid_at} onChange={e => setNewExtra(p => ({ ...p, paid_at: e.target.value }))} /></div>
+            </div>
+            <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNewExtra(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleAddExtra}>Adicionar</button></div>
           </div>
         </div>
       )}

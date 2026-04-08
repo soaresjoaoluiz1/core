@@ -122,8 +122,10 @@ router.get('/dashboard', (req, res) => {
   for (let m = 1; m <= 12; m++) {
     const monthStr = `${year}-${String(m).padStart(2, '0')}`
     const revenue = db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE reference_month = ?').get(monthStr)
+    const extraRev = db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM extra_revenue WHERE reference_month = ?').get(monthStr)
+    const totalRev = revenue.total + extraRev.total
     const expenses = db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE reference_month = ?').get(monthStr)
-    months.push({ month: monthStr, revenue: revenue.total, expenses: expenses.total, profit: revenue.total - expenses.total })
+    months.push({ month: monthStr, revenue: totalRev, expenses: expenses.total, profit: totalRev - expenses.total })
   }
 
   res.json({ months })
@@ -211,12 +213,75 @@ router.post('/expenses/copy-recurring', (req, res) => {
   res.json({ copied: count })
 })
 
+// ==================== INSTALLMENTS ====================
+
+router.get('/installments', (req, res) => {
+  const items = db.prepare('SELECT i.*, ec.name as category_name, ec.color as category_color FROM installments i LEFT JOIN expense_categories ec ON i.category_id = ec.id ORDER BY i.start_month DESC').all()
+  res.json({ installments: items })
+})
+
+router.post('/installments', (req, res) => {
+  const { name, total_amount, installment_count, start_month, category_id } = req.body
+  if (!name || !total_amount || !installment_count || !start_month) return res.status(400).json({ error: 'Campos obrigatorios' })
+  const installment_amount = Math.round((total_amount / installment_count) * 100) / 100
+  const result = db.prepare('INSERT INTO installments (name, total_amount, installment_count, installment_amount, start_month, category_id) VALUES (?, ?, ?, ?, ?, ?)').run(name, total_amount, installment_count, installment_amount, start_month, category_id || null)
+
+  // Auto-create expenses for each month
+  const catId = category_id || db.prepare("SELECT id FROM expense_categories WHERE name LIKE '%Emprestimo%' OR name LIKE '%Parcela%' LIMIT 1").get()?.id
+  if (catId) {
+    const [y, m] = start_month.split('-').map(Number)
+    const stmt = db.prepare('INSERT INTO expenses (category_id, description, amount, reference_month, is_recurring) VALUES (?, ?, ?, ?, 0)')
+    for (let i = 0; i < installment_count; i++) {
+      const date = new Date(y, m - 1 + i, 1)
+      const monthStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      stmt.run(catId, `${name} (${i + 1}/${installment_count})`, installment_amount, monthStr)
+    }
+  }
+
+  res.json({ installment: db.prepare('SELECT * FROM installments WHERE id = ?').get(result.lastInsertRowid) })
+})
+
+router.delete('/installments/:id', (req, res) => {
+  const inst = db.prepare('SELECT * FROM installments WHERE id = ?').get(req.params.id)
+  if (inst) {
+    // Remove associated expenses
+    db.prepare("DELETE FROM expenses WHERE description LIKE ? AND amount = ?").run(`${inst.name} (%`, inst.installment_amount)
+  }
+  db.prepare('DELETE FROM installments WHERE id = ?').run(req.params.id)
+  res.json({ ok: true })
+})
+
+// ==================== EXTRA REVENUE ====================
+
+router.get('/extra-revenue', (req, res) => {
+  const month = req.query.month
+  const where = month ? 'WHERE er.reference_month = ?' : ''
+  const params = month ? [month] : []
+  const items = db.prepare(`SELECT er.*, c.name as client_name FROM extra_revenue er LEFT JOIN clients c ON er.client_id = c.id ${where} ORDER BY er.created_at DESC`).all(...params)
+  const total = items.reduce((s, i) => s + i.amount, 0)
+  res.json({ items, total })
+})
+
+router.post('/extra-revenue', (req, res) => {
+  const { client_id, description, amount, reference_month, paid_at } = req.body
+  if (!description || !amount || !reference_month) return res.status(400).json({ error: 'description, amount, reference_month obrigatorios' })
+  const result = db.prepare('INSERT INTO extra_revenue (client_id, description, amount, reference_month, paid_at) VALUES (?, ?, ?, ?, ?)').run(client_id || null, description, amount, reference_month, paid_at || null)
+  res.json({ item: db.prepare('SELECT * FROM extra_revenue WHERE id = ?').get(result.lastInsertRowid) })
+})
+
+router.delete('/extra-revenue/:id', (req, res) => {
+  db.prepare('DELETE FROM extra_revenue WHERE id = ?').run(req.params.id)
+  res.json({ ok: true })
+})
+
 // DRE for a month
 router.get('/dre', (req, res) => {
   const month = req.query.month
   if (!month) return res.status(400).json({ error: 'month required' })
 
-  const revenue = db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE reference_month = ?').get(month).total
+  const mensalidades = db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE reference_month = ?').get(month).total
+  const extraRevenue = db.prepare('SELECT COALESCE(SUM(amount), 0) as total FROM extra_revenue WHERE reference_month = ?').get(month).total
+  const revenue = mensalidades + extraRevenue
   const expenseRows = db.prepare(`
     SELECT ec.name, ec.type, ec.color, COALESCE(SUM(e.amount), 0) as total
     FROM expense_categories ec LEFT JOIN expenses e ON e.category_id = ec.id AND e.reference_month = ?
@@ -229,7 +294,7 @@ router.get('/dre', (req, res) => {
   const profit = revenue - totalExpenses
   const margin = revenue > 0 ? (profit / revenue) * 100 : 0
 
-  res.json({ month, revenue, totalFixed, totalVariable, totalExpenses, profit, margin: Math.round(margin * 10) / 10, categories: expenseRows.filter(r => r.total > 0) })
+  res.json({ month, revenue, mensalidades, extraRevenue, totalFixed, totalVariable, totalExpenses, profit, margin: Math.round(margin * 10) / 10, categories: expenseRows.filter(r => r.total > 0) })
 })
 
 export default router

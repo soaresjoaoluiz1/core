@@ -368,6 +368,36 @@ if (!expCatExists) {
   console.log('[DB] Expense categories seeded')
 }
 
+// Installments (parcelamentos — equipamentos, emprestimos)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS installments (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL,
+    total_amount    REAL NOT NULL,
+    installment_count INTEGER NOT NULL,
+    installment_amount REAL NOT NULL,
+    start_month     TEXT NOT NULL,
+    category_id     INTEGER,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
+    FOREIGN KEY (category_id) REFERENCES expense_categories(id) ON DELETE SET NULL
+  );
+`)
+
+// Extra revenue (servicos avulsos)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS extra_revenue (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id       INTEGER,
+    description     TEXT NOT NULL,
+    amount          REAL NOT NULL,
+    reference_month TEXT NOT NULL,
+    paid_at         TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_extra_revenue_month ON extra_revenue(reference_month);
+`)
+
 // Task assignees (multi-assignee support)
 db.exec(`
   CREATE TABLE IF NOT EXISTS task_assignees (
