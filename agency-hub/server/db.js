@@ -303,6 +303,23 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN publish_objective TEXT") } catch {}
 try { db.exec("ALTER TABLE clients ADD COLUMN onboard_token TEXT") } catch {}
 try { db.exec("ALTER TABLE client_services ADD COLUMN config TEXT DEFAULT '{}'") } catch {}
 try { db.exec("ALTER TABLE services ADD COLUMN fields TEXT DEFAULT '[]'") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN monthly_fee REAL DEFAULT 0") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN payment_day INTEGER DEFAULT 10") } catch {}
+
+// Payments table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS payments (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_id       INTEGER NOT NULL,
+    amount          REAL NOT NULL,
+    reference_month TEXT NOT NULL,
+    paid_at         TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
+    FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_payments_client ON payments(client_id);
+  CREATE INDEX IF NOT EXISTS idx_payments_month ON payments(reference_month);
+`)
 
 // Task assignees (multi-assignee support)
 db.exec(`

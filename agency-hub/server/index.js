@@ -18,6 +18,7 @@ import taskRoutes from './routes/tasks.js'
 import approvalRoutes from './routes/approvals.js'
 import dashboardRoutes from './routes/dashboard.js'
 import notificationRoutes from './routes/notifications.js'
+import financialRoutes from './routes/financial.js'
 import { authenticate } from './middleware/auth.js'
 import { addSSEClient, removeSSEClient, addSSEUserClient, removeSSEUserClient } from './sse.js'
 
@@ -37,6 +38,7 @@ app.use('/api/tasks', authenticate, taskRoutes)
 app.use('/api/approvals', authenticate, approvalRoutes)
 app.use('/api/dashboard', authenticate, dashboardRoutes)
 app.use('/api/notifications', authenticate, notificationRoutes)
+app.use('/api/financial', authenticate, financialRoutes)
 
 // SSE
 app.get('/api/events', async (req, res) => {
