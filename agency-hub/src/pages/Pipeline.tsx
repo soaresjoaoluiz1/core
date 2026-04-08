@@ -86,7 +86,7 @@ export default function Pipeline() {
   if (isMobile) return (
     <div>
       <div className="page-header"><h1>Pipeline</h1></div>
-      {stages.filter(s => !s.is_terminal || tasks.some(t => t.stage === s.slug)).map(stage => {
+      {stages.filter(s => true).map(stage => {
         const stageTasks = tasks.filter(t => t.stage === stage.slug)
         const expanded = expandedStages.has(stage.slug)
         return (
@@ -152,7 +152,7 @@ export default function Pipeline() {
         </div>
       </div>
       <div className="kanban-board">
-        {stages.filter(s => !s.is_terminal || tasks.some(t => t.stage === s.slug)).map(stage => {
+        {stages.filter(s => true).map(stage => {
           const searchLower = searchQuery.toLowerCase()
           const stageTasks = tasks.filter(t => t.stage === stage.slug && (!searchQuery || t.title.toLowerCase().includes(searchLower) || t.client_name?.toLowerCase().includes(searchLower) || t.assigned_name?.toLowerCase().includes(searchLower)))
           return (
