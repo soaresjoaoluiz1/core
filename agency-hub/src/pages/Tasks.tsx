@@ -9,8 +9,17 @@ import {
 import { Plus, Clock, Building2, User, ExternalLink, Download, AlertTriangle, CheckSquare, Square, Users, ArrowRight, ArrowUpDown, Filter } from 'lucide-react'
 
 function timeAgo(d: string) { const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000); if (m < 60) return `${m}m`; const h = Math.floor(m / 60); if (h < 24) return `${h}h`; return `${Math.floor(h / 24)}d` }
-function isOverdue(d: string | null) { return d ? new Date(d) < new Date() : false }
-function isDueSoon(d: string | null) { return d ? (new Date(d).getTime() - Date.now()) < 2 * 86400000 && !isOverdue(d) : false }
+function isOverdue(d: string | null) {
+  if (!d) return false
+  const due = d.slice(0, 10)
+  const today = new Date().toLocaleDateString('sv-SE') // YYYY-MM-DD format
+  return due < today
+}
+function isDueSoon(d: string | null) {
+  if (!d) return false
+  const due = new Date(d + 'T23:59:59')
+  return (due.getTime() - Date.now()) < 2 * 86400000 && !isOverdue(d)
+}
 
 const PRIORITY_COLORS: Record<string, { bg: string; text: string }> = {
   urgent: { bg: 'rgba(255,107,107,0.15)', text: '#FF6B6B' },
