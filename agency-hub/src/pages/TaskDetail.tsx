@@ -190,7 +190,7 @@ export default function TaskDetail() {
               <>
                 {task.description && <div style={{ fontSize: 13, color: '#A8A3B8', marginBottom: 16, lineHeight: 1.6 }}>{task.description}</div>}
                 {/* Overdue warning */}
-                {task.due_date && new Date(task.due_date) < new Date() && task.stage !== 'concluido' && task.stage !== 'rejeitado' && (
+                {task.due_date && task.due_date.slice(0, 10) < new Date().toLocaleDateString('sv-SE') && task.stage !== 'concluido' && task.stage !== 'rejeitado' && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: 'rgba(255,107,107,0.08)', borderRadius: 8, marginBottom: 12, fontSize: 12, color: '#FF6B6B', fontWeight: 600 }}>
                     <AlertTriangle size={14} /> Tarefa atrasada! Prazo era {task.due_date.slice(0, 10)}
                   </div>

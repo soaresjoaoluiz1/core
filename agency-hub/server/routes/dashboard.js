@@ -25,7 +25,7 @@ router.get('/stats', (req, res) => {
       LEFT JOIN tasks t ON t.category_id = cat.id AND t.is_active = 1
       WHERE cat.is_active = 1 GROUP BY cat.id ORDER BY count DESC
     `).all()
-    const overdue = db.prepare("SELECT COUNT(*) as c FROM tasks WHERE is_active = 1 AND due_date IS NOT NULL AND due_date != '' AND due_date < date('now') AND stage NOT IN ('concluido', 'rejeitado')").get().c
+    const overdue = db.prepare("SELECT COUNT(*) as c FROM tasks WHERE is_active = 1 AND due_date IS NOT NULL AND due_date != '' AND due_date < date('now', '-3 hours') AND stage NOT IN ('concluido', 'rejeitado')").get().c
     const pendingInternal = db.prepare("SELECT COUNT(*) as c FROM tasks WHERE stage = 'aprovacao_interna' AND is_active = 1").get().c
     const pendingClient = db.prepare("SELECT COUNT(*) as c FROM tasks WHERE stage = 'aguardando_cliente' AND is_active = 1").get().c
     const completedPeriod = db.prepare("SELECT COUNT(*) as c FROM tasks WHERE stage = 'concluido' AND updated_at >= ?").get(sinceStr).c
@@ -40,7 +40,7 @@ router.get('/stats', (req, res) => {
       FROM pipeline_stages ps LEFT JOIN tasks t ON t.stage = ps.slug AND t.assigned_to = ? AND t.is_active = 1
       GROUP BY ps.id ORDER BY ps.position
     `).all(req.user.id)
-    const overdue = db.prepare("SELECT COUNT(*) as c FROM tasks WHERE assigned_to = ? AND is_active = 1 AND due_date IS NOT NULL AND due_date != '' AND due_date < date('now') AND stage NOT IN ('concluido', 'rejeitado')").get(req.user.id).c
+    const overdue = db.prepare("SELECT COUNT(*) as c FROM tasks WHERE assigned_to = ? AND is_active = 1 AND due_date IS NOT NULL AND due_date != '' AND due_date < date('now', '-3 hours') AND stage NOT IN ('concluido', 'rejeitado')").get(req.user.id).c
 
     res.json({ myTasks, byStage, overdue })
   } else { // cliente
@@ -73,7 +73,7 @@ router.get('/workload', (req, res) => {
   const workers = db.prepare(`
     SELECT u.id, u.name,
       (SELECT COUNT(*) FROM tasks WHERE assigned_to = u.id AND is_active = 1 AND stage NOT IN ('concluido', 'rejeitado')) as open_tasks,
-      (SELECT COUNT(*) FROM tasks WHERE assigned_to = u.id AND is_active = 1 AND due_date IS NOT NULL AND due_date != '' AND due_date < date('now') AND stage NOT IN ('concluido', 'rejeitado')) as overdue_tasks,
+      (SELECT COUNT(*) FROM tasks WHERE assigned_to = u.id AND is_active = 1 AND due_date IS NOT NULL AND due_date != '' AND due_date < date('now', '-3 hours') AND stage NOT IN ('concluido', 'rejeitado')) as overdue_tasks,
       (SELECT COUNT(*) FROM tasks WHERE assigned_to = u.id AND is_active = 1 AND stage = 'concluido') as completed_tasks
     FROM users u WHERE u.role = 'funcionario' AND u.is_active = 1
     ORDER BY open_tasks DESC

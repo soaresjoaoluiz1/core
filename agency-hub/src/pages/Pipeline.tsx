@@ -6,7 +6,12 @@ import { fetchPipelineTasks, fetchClients, fetchDepartments, fetchUsers, fetchCa
 import { Clock, Building2, User, ExternalLink, ChevronDown, ChevronRight, ArrowRight, Search, AlertTriangle, Plus } from 'lucide-react'
 
 function timeAgo(d: string) { const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000); if (m < 60) return `${m}m`; const h = Math.floor(m / 60); if (h < 24) return `${h}h`; return `${Math.floor(h / 24)}d` }
-function isOverdue(d: string | null) { return d ? new Date(d) < new Date() : false }
+function isOverdue(d: string | null) {
+  if (!d) return false
+  const due = d.slice(0, 10)
+  const today = new Date().toLocaleDateString('sv-SE')
+  return due < today
+}
 function useIsMobile() { const [m, setM] = useState(window.innerWidth <= 640); useEffect(() => { const h = () => setM(window.innerWidth <= 640); window.addEventListener('resize', h); return () => window.removeEventListener('resize', h) }, []); return m }
 
 const PRIORITY_COLORS: Record<string, string> = { low: '#6B6580', normal: '#5DADE2', high: '#FFAA83', urgent: '#FF6B6B' }
