@@ -47,7 +47,7 @@ export default function Tasks() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   // Modal
   const [showNew, setShowNew] = useState(false)
-  const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: '', due_date: '', priority: 'normal', drive_link: '' })
+  const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link: '' })
   // Bulk
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [showBulkStage, setShowBulkStage] = useState(false)
@@ -85,8 +85,8 @@ export default function Tasks() {
 
   const handleCreate = async () => {
     if (!newTask.title || !newTask.client_id) return
-    await createTask({ ...newTask, client_id: +newTask.client_id, category_id: newTask.category_id ? +newTask.category_id : undefined, department_id: newTask.department_id ? +newTask.department_id : undefined, assigned_to: newTask.assigned_to ? +newTask.assigned_to : undefined } as any)
-    setShowNew(false); setNewTask({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: '', due_date: '', priority: 'normal', drive_link: '' }); loadTasks()
+    await createTask({ ...newTask, client_id: +newTask.client_id, category_id: newTask.category_id ? +newTask.category_id : undefined, department_id: newTask.department_id ? +newTask.department_id : undefined, assigned_to: newTask.assigned_to.map(Number) } as any)
+    setShowNew(false); setNewTask({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link: '' }); loadTasks()
   }
 
   const toggleSort = (field: string) => {
@@ -221,7 +221,7 @@ export default function Tasks() {
           </div>
           <div className="form-row">
             <div className="form-group"><label>Departamento</label><select className="select" value={newTask.department_id} onChange={e => setNewTask(p => ({ ...p, department_id: e.target.value }))}><option value="">Nenhum</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></div>
-            <div className="form-group"><label>Responsavel</label><select className="select" value={newTask.assigned_to} onChange={e => setNewTask(p => ({ ...p, assigned_to: e.target.value }))}><option value="">Ninguem</option>{allUsers.filter(u => u.role !== 'cliente').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+            <div className="form-group"><label>Responsaveis</label><div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{allUsers.filter(u => u.role !== 'cliente').map(u => { const sel = newTask.assigned_to.includes(String(u.id)); return <button type="button" key={u.id} onClick={() => setNewTask(p => ({ ...p, assigned_to: sel ? p.assigned_to.filter(x => x !== String(u.id)) : [...p.assigned_to, String(u.id)] }))} style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${sel ? '#34C759' : 'rgba(255,255,255,0.08)'}`, background: sel ? 'rgba(52,199,89,0.12)' : 'transparent', color: sel ? '#34C759' : '#9B96B0', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>{sel ? '\u2713 ' : ''}{u.name}</button> })}</div></div>
           </div>
           <div className="form-row">
             <div className="form-group"><label>Prazo</label><input className="input" type="date" value={newTask.due_date} onChange={e => setNewTask(p => ({ ...p, due_date: e.target.value }))} /></div>

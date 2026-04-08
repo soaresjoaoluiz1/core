@@ -6,6 +6,18 @@ import { notify, notifyMany, getDonoUsers, getClientUsers } from '../notificatio
 
 const router = Router()
 
+// Helper: get assignee IDs and names for a task
+function getAssignees(taskId) {
+  return db.prepare('SELECT ta.user_id, u.name FROM task_assignees ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = ?').all(taskId)
+}
+function setAssignees(taskId, userIds) {
+  db.prepare('DELETE FROM task_assignees WHERE task_id = ?').run(taskId)
+  if (userIds?.length) {
+    const stmt = db.prepare('INSERT OR IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)')
+    userIds.forEach(uid => stmt.run(taskId, uid))
+  }
+}
+
 // Stage transition rules per role
 const TRANSITIONS = {
   dono: null, // can do anything
@@ -30,14 +42,14 @@ router.get('/', (req, res) => {
     where.push('t.client_id = ?'); params.push(req.user.client_id)
   } else if (req.user.role === 'funcionario') {
     // See tasks assigned to them OR in their departments
-    where.push('(t.assigned_to = ? OR t.department_id IN (SELECT department_id FROM user_departments WHERE user_id = ?))')
+    where.push('(t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?) OR t.department_id IN (SELECT department_id FROM user_departments WHERE user_id = ?))')
     params.push(req.user.id, req.user.id)
   }
 
   if (client_id) { where.push('t.client_id = ?'); params.push(client_id) }
   if (department_id) { where.push('t.department_id = ?'); params.push(department_id) }
   if (stage) { where.push('t.stage = ?'); params.push(stage) }
-  if (assigned_to) { where.push('t.assigned_to = ?'); params.push(assigned_to) }
+  if (assigned_to) { where.push('t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)'); params.push(assigned_to) }
   if (category_id) { where.push('t.category_id = ?'); params.push(category_id) }
   if (priority) { where.push('t.priority = ?'); params.push(priority) }
   if (search) { where.push("(t.title LIKE ? OR t.description LIKE ?)"); params.push(`%${search}%`, `%${search}%`) }
@@ -49,7 +61,8 @@ router.get('/', (req, res) => {
 
   const tasks = db.prepare(`
     SELECT t.*, c.name as client_name, d.name as department_name, d.color as department_color,
-      cat.name as category_name, cat.color as category_color, u.name as assigned_name,
+      cat.name as category_name, cat.color as category_color,
+      (SELECT GROUP_CONCAT(u2.name, ', ') FROM task_assignees ta2 JOIN users u2 ON ta2.user_id = u2.id WHERE ta2.task_id = t.id) as assigned_name,
       creator.name as created_by_name,
       (SELECT COUNT(*) FROM task_comments WHERE task_id = t.id) as comment_count,
       ps.name as stage_name, ps.color as stage_color
@@ -57,7 +70,6 @@ router.get('/', (req, res) => {
     LEFT JOIN clients c ON t.client_id = c.id
     LEFT JOIN departments d ON t.department_id = d.id
     LEFT JOIN task_categories cat ON t.category_id = cat.id
-    LEFT JOIN users u ON t.assigned_to = u.id
     LEFT JOIN users creator ON t.created_by = creator.id
     LEFT JOIN pipeline_stages ps ON t.stage = ps.slug
     WHERE ${where.join(' AND ')}
@@ -75,18 +87,19 @@ router.get('/pipeline', (req, res) => {
   const params = []
 
   if (req.user.role === 'cliente') { where.push('t.client_id = ?'); params.push(req.user.client_id) }
-  else if (req.user.role === 'funcionario') { where.push('(t.assigned_to = ? OR t.department_id IN (SELECT department_id FROM user_departments WHERE user_id = ?))'); params.push(req.user.id, req.user.id) }
+  else if (req.user.role === 'funcionario') { where.push('(t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?) OR t.department_id IN (SELECT department_id FROM user_departments WHERE user_id = ?))'); params.push(req.user.id, req.user.id) }
   if (client_id) { where.push('t.client_id = ?'); params.push(client_id) }
   if (department_id) { where.push('t.department_id = ?'); params.push(department_id) }
-  if (assigned_to) { where.push('t.assigned_to = ?'); params.push(assigned_to) }
+  if (assigned_to) { where.push('t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)'); params.push(assigned_to) }
 
   const stages = db.prepare('SELECT * FROM pipeline_stages ORDER BY position').all()
   const tasks = db.prepare(`
     SELECT t.*, c.name as client_name, d.name as department_name, d.color as department_color,
-      u.name as assigned_name, ps.name as stage_name, ps.color as stage_color
+      (SELECT GROUP_CONCAT(u2.name, ', ') FROM task_assignees ta2 JOIN users u2 ON ta2.user_id = u2.id WHERE ta2.task_id = t.id) as assigned_name,
+      ps.name as stage_name, ps.color as stage_color
     FROM tasks t
     LEFT JOIN clients c ON t.client_id = c.id LEFT JOIN departments d ON t.department_id = d.id
-    LEFT JOIN users u ON t.assigned_to = u.id LEFT JOIN pipeline_stages ps ON t.stage = ps.slug
+    LEFT JOIN pipeline_stages ps ON t.stage = ps.slug
     WHERE ${where.join(' AND ')}
     ORDER BY t.updated_at DESC
   `).all(...params)
@@ -99,19 +112,24 @@ router.post('/', requireRole('dono', 'funcionario'), (req, res) => {
   const { client_id, title, description, category_id, department_id, assigned_to, due_date, priority, drive_link } = req.body
   if (!client_id || !title) return res.status(400).json({ error: 'client_id e title obrigatorios' })
 
+  // assigned_to can be a single ID or array of IDs
+  const assigneeIds = Array.isArray(assigned_to) ? assigned_to.filter(Boolean).map(Number) : (assigned_to ? [Number(assigned_to)] : [])
+  const primaryAssignee = assigneeIds[0] || null
+
   const result = db.prepare(`
     INSERT INTO tasks (client_id, category_id, department_id, title, description, due_date, priority, assigned_to, drive_link, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(client_id, category_id || null, department_id || null, title, description || null, due_date || null, priority || 'normal', assigned_to || null, drive_link || null, req.user.id)
+  `).run(client_id, category_id || null, department_id || null, title, description || null, due_date || null, priority || 'normal', primaryAssignee, drive_link || null, req.user.id)
 
+  setAssignees(result.lastInsertRowid, assigneeIds)
   db.prepare('INSERT INTO task_history (task_id, to_stage, user_id) VALUES (?, ?, ?)').run(result.lastInsertRowid, 'backlog', req.user.id)
 
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid)
   broadcastSSE(task.client_id, 'task:created', task)
-  // Notify assignee
-  if (task.assigned_to && task.assigned_to !== req.user.id) {
-    notify(task.assigned_to, 'task_assigned', 'Nova tarefa atribuida', `"${task.title}" foi atribuida a voce`, task.id, req.user.id)
-  }
+  // Notify all assignees
+  assigneeIds.filter(uid => uid !== req.user.id).forEach(uid => {
+    notify(uid, 'task_assigned', 'Nova tarefa atribuida', `"${task.title}" foi atribuida a voce`, task.id, req.user.id)
+  })
   res.json({ task })
 })
 
@@ -119,14 +137,16 @@ router.post('/', requireRole('dono', 'funcionario'), (req, res) => {
 router.get('/:id', (req, res) => {
   const task = db.prepare(`
     SELECT t.*, c.name as client_name, d.name as department_name, d.color as department_color,
-      cat.name as category_name, cat.color as category_color, u.name as assigned_name,
+      cat.name as category_name, cat.color as category_color,
+      (SELECT GROUP_CONCAT(u2.name, ', ') FROM task_assignees ta2 JOIN users u2 ON ta2.user_id = u2.id WHERE ta2.task_id = t.id) as assigned_name,
       creator.name as created_by_name, ps.name as stage_name, ps.color as stage_color
     FROM tasks t LEFT JOIN clients c ON t.client_id = c.id LEFT JOIN departments d ON t.department_id = d.id
-    LEFT JOIN task_categories cat ON t.category_id = cat.id LEFT JOIN users u ON t.assigned_to = u.id
+    LEFT JOIN task_categories cat ON t.category_id = cat.id
     LEFT JOIN users creator ON t.created_by = creator.id LEFT JOIN pipeline_stages ps ON t.stage = ps.slug
     WHERE t.id = ?
   `).get(req.params.id)
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' })
+  task.assignees = getAssignees(task.id)
   if (req.user.role === 'cliente' && task.client_id !== req.user.client_id) return res.status(403).json({ error: 'Forbidden' })
 
   // Comments (filter internal for clients)
@@ -148,7 +168,11 @@ router.get('/:id', (req, res) => {
 router.put('/:id', requireRole('dono', 'funcionario'), (req, res) => {
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id)
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' })
-  if (req.user.role === 'funcionario' && task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Sem permissao' })
+  // Funcionario can edit if they are one of the assignees
+  if (req.user.role === 'funcionario') {
+    const isAssignee = db.prepare('SELECT 1 FROM task_assignees WHERE task_id = ? AND user_id = ?').get(task.id, req.user.id)
+    if (!isAssignee && task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Sem permissao' })
+  }
 
   const { title, description, due_date, priority, department_id, assigned_to, drive_link, drive_link_raw, category_id, approval_link, approval_text, publish_date, publish_objective } = req.body
   const sets = []; const params = []
@@ -157,7 +181,6 @@ router.put('/:id', requireRole('dono', 'funcionario'), (req, res) => {
   if (due_date !== undefined) { sets.push('due_date = ?'); params.push(due_date) }
   if (priority !== undefined) { sets.push('priority = ?'); params.push(priority) }
   if (department_id !== undefined) { sets.push('department_id = ?'); params.push(department_id) }
-  if (assigned_to !== undefined) { sets.push('assigned_to = ?'); params.push(assigned_to) }
   if (drive_link !== undefined) { sets.push('drive_link = ?'); params.push(drive_link) }
   if (drive_link_raw !== undefined) { sets.push('drive_link_raw = ?'); params.push(drive_link_raw) }
   if (category_id !== undefined) { sets.push('category_id = ?'); params.push(category_id) }
@@ -165,20 +188,31 @@ router.put('/:id', requireRole('dono', 'funcionario'), (req, res) => {
   if (approval_text !== undefined) { sets.push('approval_text = ?'); params.push(approval_text) }
   if (publish_date !== undefined) { sets.push('publish_date = ?'); params.push(publish_date) }
   if (publish_objective !== undefined) { sets.push('publish_objective = ?'); params.push(publish_objective) }
+
+  // Handle multi-assignee
+  if (assigned_to !== undefined) {
+    const newIds = Array.isArray(assigned_to) ? assigned_to.filter(Boolean).map(Number) : (assigned_to ? [Number(assigned_to)] : [])
+    const oldAssignees = getAssignees(task.id)
+    const oldIds = oldAssignees.map(a => a.user_id)
+    setAssignees(task.id, newIds)
+    sets.push('assigned_to = ?'); params.push(newIds[0] || null)
+    // Log history
+    const oldNames = oldAssignees.map(a => a.name).join(', ') || 'Ninguem'
+    const newNames = newIds.length ? db.prepare(`SELECT GROUP_CONCAT(name, ', ') as n FROM users WHERE id IN (${newIds.map(() => '?').join(',')})`).get(...newIds)?.n || 'Ninguem' : 'Ninguem'
+    if (oldNames !== newNames) {
+      db.prepare('INSERT INTO task_history (task_id, from_stage, to_stage, user_id, comment) VALUES (?, ?, ?, ?, ?)').run(task.id, task.stage, task.stage, req.user.id, `Responsavel: ${oldNames} → ${newNames}`)
+    }
+    // Notify removed assignees
+    oldIds.filter(uid => !newIds.includes(uid) && uid !== req.user.id).forEach(uid => notify(uid, 'task_reassigned', 'Tarefa reatribuida', `"${task.title}" foi reatribuida`, task.id, req.user.id))
+    // Notify new assignees
+    newIds.filter(uid => !oldIds.includes(uid) && uid !== req.user.id).forEach(uid => notify(uid, 'task_assigned', 'Nova tarefa atribuida', `"${task.title}" foi atribuida a voce`, task.id, req.user.id))
+  }
+
   if (!sets.length) return res.status(400).json({ error: 'Nada pra atualizar' })
   sets.push("updated_at = datetime('now', '-3 hours')"); params.push(req.params.id)
-  const oldAssigned = task.assigned_to
   db.prepare(`UPDATE tasks SET ${sets.join(', ')} WHERE id = ?`).run(...params)
   const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id)
   broadcastSSE(updated.client_id, 'task:updated', updated)
-  // Notify + log history on assignment change
-  if (req.body.assigned_to !== undefined && oldAssigned !== updated.assigned_to) {
-    const oldName = oldAssigned ? db.prepare('SELECT name FROM users WHERE id = ?').get(oldAssigned)?.name || 'Ninguem' : 'Ninguem'
-    const newName = updated.assigned_to ? db.prepare('SELECT name FROM users WHERE id = ?').get(updated.assigned_to)?.name || 'Ninguem' : 'Ninguem'
-    db.prepare('INSERT INTO task_history (task_id, from_stage, to_stage, user_id, comment) VALUES (?, ?, ?, ?, ?)').run(updated.id, task.stage, task.stage, req.user.id, `Responsavel: ${oldName} → ${newName}`)
-    if (oldAssigned && oldAssigned !== req.user.id) notify(oldAssigned, 'task_reassigned', 'Tarefa reatribuida', `"${updated.title}" foi reatribuida`, updated.id, req.user.id)
-    if (updated.assigned_to && updated.assigned_to !== req.user.id) notify(updated.assigned_to, 'task_assigned', 'Nova tarefa atribuida', `"${updated.title}" foi atribuida a voce`, updated.id, req.user.id)
-  }
   res.json({ task: updated })
 })
 
@@ -212,7 +246,7 @@ router.put('/:id/stage', (req, res) => {
     notifyMany(getClientUsers(updated.client_id).map(u => u.id), 'task_ready_for_approval', 'Tarefa pronta pra aprovar', `"${updated.title}" aguarda sua aprovacao`, updated.id, req.user.id)
   }
   if (stage === 'concluido') {
-    if (updated.assigned_to) notify(updated.assigned_to, 'task_completed', 'Tarefa concluida', `"${updated.title}"`, updated.id, req.user.id)
+    getAssignees(updated.id).filter(a => a.user_id !== req.user.id).forEach(a => notify(a.user_id, 'task_completed', 'Tarefa concluida', `"${updated.title}"`, updated.id, req.user.id))
     notifyMany(getClientUsers(updated.client_id).map(u => u.id), 'task_completed', 'Tarefa concluida', `"${updated.title}"`, updated.id, req.user.id)
   }
   res.json({ task: updated })
@@ -229,10 +263,11 @@ router.post('/:id/comments', (req, res) => {
   const result = db.prepare('INSERT INTO task_comments (task_id, user_id, content, is_internal) VALUES (?, ?, ?, ?)').run(task.id, req.user.id, content, internal)
   const comment = db.prepare('SELECT tc.*, u.name as user_name, u.role as user_role FROM task_comments tc LEFT JOIN users u ON tc.user_id = u.id WHERE tc.id = ?').get(result.lastInsertRowid)
   broadcastSSE(task.client_id, 'task:comment', { taskId: task.id, comment })
-  // Notify assignee
-  if (task.assigned_to && task.assigned_to !== req.user.id) notify(task.assigned_to, 'comment_added', 'Novo comentario', `Em "${task.title}"`, task.id, req.user.id)
+  // Notify all assignees
+  const assignees = getAssignees(task.id)
+  assignees.filter(a => a.user_id !== req.user.id).forEach(a => notify(a.user_id, 'comment_added', 'Novo comentario', `Em "${task.title}"`, task.id, req.user.id))
   // Notify creator
-  if (task.created_by && task.created_by !== req.user.id && task.created_by !== task.assigned_to) notify(task.created_by, 'comment_added', 'Novo comentario', `Em "${task.title}"`, task.id, req.user.id)
+  if (task.created_by && task.created_by !== req.user.id && !assignees.find(a => a.user_id === task.created_by)) notify(task.created_by, 'comment_added', 'Novo comentario', `Em "${task.title}"`, task.id, req.user.id)
   // Non-internal → notify client users
   if (!internal) notifyMany(getClientUsers(task.client_id).map(u => u.id).filter(uid => uid !== req.user.id), 'comment_added', 'Novo comentario', `Em "${task.title}"`, task.id, req.user.id)
   res.json({ comment })
