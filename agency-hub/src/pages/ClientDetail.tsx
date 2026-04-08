@@ -35,7 +35,7 @@ export default function ClientDetail() {
     try {
       const data = await fetchClient(+id)
       setClient(data.client); setCredentials((data as any).credentials || []); setClientUsers((data as any).users || [])
-      setEditData({ name: data.client.name, contact_name: data.client.contact_name || '', contact_email: data.client.contact_email || '', contact_phone: (data.client as any).contact_phone || '', drive_folder: (data.client as any).drive_folder || '' })
+      setEditData({ name: data.client.name, contact_name: data.client.contact_name || '', contact_email: data.client.contact_email || '', contact_phone: (data.client as any).contact_phone || '', drive_folder: (data.client as any).drive_folder || '', monthly_fee: (data.client as any).monthly_fee || 0, payment_day: (data.client as any).payment_day || 10 })
     } catch {} finally { setLoading(false) }
   }
   useEffect(() => { load() }, [id])
@@ -123,6 +123,8 @@ export default function ClientDetail() {
                 <div className="lead-info-row"><span className="lead-info-label">Pasta do Drive</span><span className="lead-info-value">
                   {(client as any).drive_folder ? <a href={(client as any).drive_folder} target="_blank" rel="noopener noreferrer" style={{ color: '#5DADE2', display: 'flex', alignItems: 'center', gap: 4 }}><ExternalLink size={12} /> Abrir Pasta</a> : '-'}
                 </span></div>
+                {(client as any).monthly_fee > 0 && <div className="lead-info-row"><span className="lead-info-label">Mensalidade</span><span className="lead-info-value" style={{ color: '#FFB300', fontWeight: 600 }}>R$ {((client as any).monthly_fee || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>}
+                {(client as any).payment_day > 0 && <div className="lead-info-row"><span className="lead-info-label">Dia Vencimento</span><span className="lead-info-value">Dia {(client as any).payment_day}</span></div>}
               </div>
             </>
           ) : (
@@ -135,6 +137,10 @@ export default function ClientDetail() {
               <div className="form-row">
                 <div className="form-group"><label>Telefone</label><input className="input" value={editData.contact_phone} onChange={e => setEditData((p: any) => ({ ...p, contact_phone: e.target.value }))} /></div>
                 <div className="form-group"><label>Pasta do Drive</label><input className="input" value={editData.drive_folder} onChange={e => setEditData((p: any) => ({ ...p, drive_folder: e.target.value }))} placeholder="https://drive.google.com/drive/folders/..." /></div>
+              </div>
+              <div className="form-row">
+                <div className="form-group"><label>Mensalidade (R$)</label><input className="input" type="number" step="0.01" value={editData.monthly_fee} onChange={e => setEditData((p: any) => ({ ...p, monthly_fee: parseFloat(e.target.value) || 0 }))} placeholder="0.00" /></div>
+                <div className="form-group"><label>Dia de Vencimento</label><input className="input" type="number" min="1" max="31" value={editData.payment_day} onChange={e => setEditData((p: any) => ({ ...p, payment_day: parseInt(e.target.value) || 10 }))} /></div>
               </div>
               <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
                 <button className="btn btn-primary btn-sm" onClick={handleSave}><Save size={12} /> Salvar</button>

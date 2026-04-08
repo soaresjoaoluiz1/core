@@ -48,7 +48,7 @@ router.get('/:id', requireRole('dono'), (req, res) => {
 })
 
 router.put('/:id', requireRole('dono'), (req, res) => {
-  const { name, contact_name, contact_email, contact_phone, logo_url, drive_folder, is_active } = req.body
+  const { name, contact_name, contact_email, contact_phone, logo_url, drive_folder, is_active, monthly_fee, payment_day } = req.body
   const sets = []; const params = []
   if (name !== undefined) { sets.push('name = ?'); params.push(name) }
   if (contact_name !== undefined) { sets.push('contact_name = ?'); params.push(contact_name) }
@@ -57,6 +57,8 @@ router.put('/:id', requireRole('dono'), (req, res) => {
   if (logo_url !== undefined) { sets.push('logo_url = ?'); params.push(logo_url) }
   if (drive_folder !== undefined) { sets.push('drive_folder = ?'); params.push(drive_folder) }
   if (is_active !== undefined) { sets.push('is_active = ?'); params.push(is_active ? 1 : 0) }
+  if (monthly_fee !== undefined) { sets.push('monthly_fee = ?'); params.push(monthly_fee) }
+  if (payment_day !== undefined) { sets.push('payment_day = ?'); params.push(payment_day) }
   if (!sets.length) return res.status(400).json({ error: 'Nada pra atualizar' })
   sets.push("updated_at = datetime('now', '-3 hours')"); params.push(req.params.id)
   db.prepare(`UPDATE clients SET ${sets.join(', ')} WHERE id = ?`).run(...params)

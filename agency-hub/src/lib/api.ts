@@ -10,6 +10,7 @@ export async function apiFetch<T = any>(path: string, opts: RequestInit = {}): P
 }
 
 export function formatNumber(n: number) { return n.toLocaleString('pt-BR') }
+export function formatBRL(n: number) { return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 
 // Types
 export interface Client { id: number; name: string; slug: string; logo_url: string | null; contact_name: string | null; contact_email: string | null; contact_phone?: string | null; drive_folder?: string | null; is_active: number; task_count?: number; user_count?: number }
@@ -121,3 +122,11 @@ export const updateService = (id: number, data: any) => apiFetch(`/api/services/
 export interface ClientService extends Service { config: Record<string, string> }
 export const fetchClientServices = (clientId: number) => apiFetch<{ services: ClientService[] }>(`/api/clients/${clientId}/services`).then(d => d.services)
 export const updateClientServices = (clientId: number, services: { id: number; config: Record<string, string> }[]) => apiFetch(`/api/clients/${clientId}/services`, { method: 'PUT', body: JSON.stringify({ services }) })
+
+// Financial
+export interface FinancialClient { id: number; name: string; monthly_fee: number; payment_day: number; status: 'paid' | 'pending' | 'late'; paid_at?: string; amount_paid?: number; days_late: number; penalty: number; total_due: number }
+export interface FinancialOverview { clients: FinancialClient[]; summary: { expected: number; received: number; pending: number; late: number; lateCount: number } }
+export interface MonthlyRevenue { month: string; total: number }
+export const fetchFinancialOverview = (month: string) => apiFetch<FinancialOverview>(`/api/financial/overview?month=${month}`)
+export const recordPayment = (data: { client_id: number; amount: number; reference_month: string; paid_at: string }) => apiFetch('/api/financial/payments', { method: 'POST', body: JSON.stringify(data) })
+export const fetchFinancialDashboard = (year: number) => apiFetch<{ months: MonthlyRevenue[] }>(`/api/financial/dashboard?year=${year}`)

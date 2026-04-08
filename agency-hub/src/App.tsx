@@ -16,6 +16,7 @@ import Categories from './pages/Categories'
 import SettingsPage from './pages/Settings'
 import Notifications from './pages/Notifications'
 import Services from './pages/Services'
+import Financial from './pages/Financial'
 import Onboard from './pages/Onboard'
 
 function AppRoutes() {
@@ -49,6 +50,7 @@ function AppRoutes() {
               <Route path="/departments" element={<Departments />} />
               <Route path="/categories" element={<Categories />} />
               <Route path="/services" element={<Services />} />
+              <Route path="/financial" element={<Financial />} />
               <Route path="/settings" element={<SettingsPage />} />
             </>}
             <Route path="*" element={<Navigate to={home} />} />
