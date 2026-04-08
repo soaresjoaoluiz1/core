@@ -62,7 +62,9 @@ export default function TaskDetail() {
   useEffect(() => {
     if (!timerRunning || !activeTimerEntry) return
     const interval = setInterval(() => {
-      setTimerElapsed(Math.floor((Date.now() - new Date(activeTimerEntry.started_at + 'Z').getTime()) / 1000))
+      // started_at is in SP timezone (UTC-3), add offset
+      const startedAt = new Date(activeTimerEntry.started_at + '-03:00').getTime()
+      setTimerElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
     }, 1000)
     return () => clearInterval(interval)
   }, [timerRunning, activeTimerEntry])

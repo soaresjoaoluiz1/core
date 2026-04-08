@@ -297,15 +297,15 @@ router.post('/:id/time/start', (req, res) => {
   // Check if there's an active timer
   const active = db.prepare('SELECT id FROM time_entries WHERE task_id = ? AND user_id = ? AND ended_at IS NULL').get(req.params.id, req.user.id)
   if (active) return res.status(400).json({ error: 'Timer ja ativo' })
-  const result = db.prepare('INSERT INTO time_entries (task_id, user_id, started_at) VALUES (?, ?, datetime(\'now\'))').run(req.params.id, req.user.id)
+  const result = db.prepare("INSERT INTO time_entries (task_id, user_id, started_at) VALUES (?, ?, datetime('now', '-3 hours'))").run(req.params.id, req.user.id)
   res.json({ entry: db.prepare('SELECT * FROM time_entries WHERE id = ?').get(result.lastInsertRowid) })
 })
 
 router.post('/:id/time/stop', (req, res) => {
   const active = db.prepare('SELECT * FROM time_entries WHERE task_id = ? AND user_id = ? AND ended_at IS NULL').get(req.params.id, req.user.id)
   if (!active) return res.status(400).json({ error: 'Nenhum timer ativo' })
-  const duration = Math.floor((Date.now() - new Date(active.started_at + 'Z').getTime()) / 1000)
-  db.prepare('UPDATE time_entries SET ended_at = datetime(\'now\'), duration_seconds = ?, description = ? WHERE id = ?').run(duration, req.body.description || null, active.id)
+  const duration = Math.floor((Date.now() - new Date(active.started_at + '-03:00').getTime()) / 1000)
+  db.prepare("UPDATE time_entries SET ended_at = datetime('now', '-3 hours'), duration_seconds = ?, description = ? WHERE id = ?").run(Math.max(0, duration), req.body.description || null, active.id)
   res.json({ entry: db.prepare('SELECT * FROM time_entries WHERE id = ?').get(active.id) })
 })
 
