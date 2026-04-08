@@ -149,7 +149,10 @@ import { readFileSync } from 'fs'
 let indexHtml = ''
 try { indexHtml = readFileSync(resolve(distPath, 'index.html'), 'utf-8') } catch {}
 
-app.use(express.static(distPath))
+app.use(express.static(distPath, { etag: false, maxAge: 0, setHeaders: (res, path) => {
+  if (path.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+  else if (path.includes('/assets/')) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+}}))
 
 // Dynamic OG tags for onboard links (WhatsApp preview)
 app.get('/onboard/:token', (req, res) => {
@@ -164,6 +167,7 @@ app.get('/onboard/:token', (req, res) => {
 })
 
 app.get('/{*path}', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
   res.sendFile(resolve(distPath, 'index.html'))
 })
 
