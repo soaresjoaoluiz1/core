@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
@@ -59,19 +59,36 @@ export default function TaskDetail() {
   useSSE('task:stage_changed', useCallback((data: any) => { if (data.id === parseInt(id || '0')) loadTask() }, [id, loadTask]))
   useSSE('task:comment', useCallback((data: any) => { if (data.taskId === parseInt(id || '0')) loadTask() }, [id, loadTask]))
 
-  // Timer tick
+  const [showTimerCheck, setShowTimerCheck] = useState(false)
+  const lastCheckRef = useRef(0)
+
+  // Timer tick + hourly check
   useEffect(() => {
     if (!timerRunning || !activeTimerEntry) return
     const interval = setInterval(() => {
-      // started_at is in SP timezone (UTC-3), add offset
       const startedAt = new Date(activeTimerEntry.started_at + '-03:00').getTime()
-      setTimerElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
+      const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
+      setTimerElapsed(elapsed)
+      // Check every hour (3600s)
+      const currentHour = Math.floor(elapsed / 3600)
+      if (currentHour > 0 && currentHour > lastCheckRef.current) {
+        lastCheckRef.current = currentHour
+        setShowTimerCheck(true)
+      }
     }, 1000)
     return () => clearInterval(interval)
   }, [timerRunning, activeTimerEntry])
 
-  const handleStartTimer = async () => { if (task) { await startTimer(task.id); loadTask() } }
+  const handleStartTimer = async () => { if (task) { lastCheckRef.current = 0; await startTimer(task.id); loadTask() } }
   const handleStopTimer = async () => { if (task) { await stopTimer(task.id); setTimerRunning(false); setTimerElapsed(0); loadTask() } }
+  const handleTimerCheckNo = async () => {
+    setShowTimerCheck(false)
+    if (task) {
+      await stopTimer(task.id)
+      await moveTaskStage(task.id, 'backlog')
+      setTimerRunning(false); setTimerElapsed(0); loadTask()
+    }
+  }
 
   const formatTime = (seconds: number) => {
     const h = Math.floor(seconds / 3600); const m = Math.floor((seconds % 3600) / 60); const s = seconds % 60
@@ -105,7 +122,18 @@ export default function TaskDetail() {
       alert('Preencha o "Conteudo para Aprovacao" antes de enviar pra aprovacao.\n\nClique em Editar e preencha o link do arquivo finalizado na secao dourada.')
       return
     }
-    try { await moveTaskStage(task.id, stage); loadTask() }
+    try {
+      await moveTaskStage(task.id, stage)
+      // Auto-start timer when moving to em_producao
+      if (stage === 'em_producao' && !timerRunning) {
+        try { lastCheckRef.current = 0; await startTimer(task.id) } catch {}
+      }
+      // Auto-stop timer when moving out of em_producao
+      if (task.stage === 'em_producao' && stage !== 'em_producao' && timerRunning) {
+        try { await stopTimer(task.id) } catch {}
+      }
+      loadTask()
+    }
     catch (err: any) { alert(err.message || 'Erro ao mover tarefa') }
   }
 
@@ -389,6 +417,22 @@ export default function TaskDetail() {
           <div className="form-group"><label>Motivo da rejeicao *</label><textarea className="input" rows={3} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Descreva o que precisa ser alterado..." /></div>
           <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowReject(false)}>Cancelar</button><button className="btn btn-danger" onClick={handleReject} disabled={!rejectReason.trim()}>Rejeitar</button></div>
         </div></div>
+      )}
+
+      {/* Timer hourly check popup */}
+      {showTimerCheck && (
+        <div className="modal-overlay">
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 380, textAlign: 'center' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>&#9202;</div>
+            <h2 style={{ marginBottom: 8 }}>Ainda esta produzindo?</h2>
+            <p style={{ color: '#9B96B0', fontSize: 14, marginBottom: 8 }}>Timer ativo ha <strong style={{ color: '#FFB300' }}>{formatTime(timerElapsed)}</strong></p>
+            <p style={{ color: '#6B6580', fontSize: 12, marginBottom: 20 }}>"{task?.title}"</p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button className="btn btn-primary" onClick={() => setShowTimerCheck(false)} style={{ minWidth: 120 }}>Sim, continuar</button>
+              <button className="btn btn-danger" onClick={handleTimerCheckNo} style={{ minWidth: 120 }}>Nao, parar</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
