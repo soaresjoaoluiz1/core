@@ -18,6 +18,7 @@ import Notifications from './pages/Notifications'
 import Services from './pages/Services'
 import Financial from './pages/Financial'
 import Onboard from './pages/Onboard'
+import TimerCheck from './components/TimerCheck'
 
 function AppRoutes() {
   const { user, loading } = useAuth()
@@ -31,6 +32,7 @@ function AppRoutes() {
 
   return (
     <SSEProvider>
+      <TimerCheck />
       <div className="app-layout">
         <Sidebar />
         <main className="main-content">

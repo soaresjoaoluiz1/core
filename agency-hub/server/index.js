@@ -40,6 +40,17 @@ app.use('/api/dashboard', authenticate, dashboardRoutes)
 app.use('/api/notifications', authenticate, notificationRoutes)
 app.use('/api/financial', authenticate, financialRoutes)
 
+// Active timers for current user
+app.get('/api/my-timers', authenticate, (req, res) => {
+  const timers = db.prepare(`
+    SELECT te.*, t.title as task_title, t.id as task_id
+    FROM time_entries te JOIN tasks t ON te.task_id = t.id
+    WHERE te.user_id = ? AND te.ended_at IS NULL
+    ORDER BY te.started_at DESC
+  `).all(req.user.id)
+  res.json({ timers })
+})
+
 // SSE
 app.get('/api/events', async (req, res) => {
   const token = req.query.token
