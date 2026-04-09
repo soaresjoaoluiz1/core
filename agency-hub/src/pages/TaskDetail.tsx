@@ -123,15 +123,8 @@ export default function TaskDetail() {
       return
     }
     try {
+      if (stage === 'em_producao') lastCheckRef.current = 0
       await moveTaskStage(task.id, stage)
-      // Auto-start timer when moving to em_producao
-      if (stage === 'em_producao' && !timerRunning) {
-        try { lastCheckRef.current = 0; await startTimer(task.id) } catch {}
-      }
-      // Auto-stop timer when moving out of em_producao
-      if (task.stage === 'em_producao' && stage !== 'em_producao' && timerRunning) {
-        try { await stopTimer(task.id) } catch {}
-      }
       loadTask()
     }
     catch (err: any) { alert(err.message || 'Erro ao mover tarefa') }

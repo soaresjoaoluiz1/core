@@ -236,6 +236,22 @@ router.put('/:id/stage', (req, res) => {
   db.prepare("UPDATE tasks SET stage = ?, updated_at = datetime('now', '-3 hours') WHERE id = ?").run(stage, task.id)
   db.prepare('INSERT INTO task_history (task_id, from_stage, to_stage, user_id, comment) VALUES (?, ?, ?, ?, ?)').run(task.id, task.stage, stage, req.user.id, comment || null)
 
+  // Auto-start timer when entering em_producao
+  if (stage === 'em_producao') {
+    const activeTimer = db.prepare('SELECT id FROM time_entries WHERE task_id = ? AND ended_at IS NULL').get(task.id)
+    if (!activeTimer) {
+      db.prepare("INSERT INTO time_entries (task_id, user_id, started_at) VALUES (?, ?, datetime('now', '-3 hours'))").run(task.id, req.user.id)
+    }
+  }
+  // Auto-stop timer when leaving em_producao
+  if (task.stage === 'em_producao' && stage !== 'em_producao') {
+    const activeTimer = db.prepare('SELECT * FROM time_entries WHERE task_id = ? AND ended_at IS NULL').get(task.id)
+    if (activeTimer) {
+      const duration = Math.max(0, Math.floor((Date.now() - new Date(activeTimer.started_at + '-03:00').getTime()) / 1000))
+      db.prepare("UPDATE time_entries SET ended_at = datetime('now', '-3 hours'), duration_seconds = ? WHERE id = ?").run(duration, activeTimer.id)
+    }
+  }
+
   const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id)
   broadcastSSE(updated.client_id, 'task:stage_changed', updated)
   // Stage-specific notifications
