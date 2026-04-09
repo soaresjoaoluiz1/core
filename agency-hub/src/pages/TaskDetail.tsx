@@ -69,8 +69,8 @@ export default function TaskDetail() {
       const startedAt = new Date(activeTimerEntry.started_at + '-03:00').getTime()
       const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000))
       setTimerElapsed(elapsed)
-      // Check every hour (3600s)
-      const currentHour = Math.floor(elapsed / 3600)
+      // Check every 5 minutes (300s) — TODO: change back to 3600 after testing
+      const currentHour = Math.floor(elapsed / 300)
       if (currentHour > 0 && currentHour > lastCheckRef.current) {
         lastCheckRef.current = currentHour
         setShowTimerCheck(true)
