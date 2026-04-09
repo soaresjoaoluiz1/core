@@ -184,4 +184,19 @@ app.get('/{*path}', (req, res) => {
   res.sendFile(resolve(distPath, 'index.html'))
 })
 
-app.listen(PORT, () => console.log(`[Dros Hub API] Running on http://localhost:${PORT}`))
+app.listen(PORT, () => {
+  console.log(`[Dros Hub API] Running on http://localhost:${PORT}`)
+
+  // Server-side timer check — every 5 minutes, check for active timers and send SSE
+  const TIMER_CHECK_SECONDS = 300 // 5min for testing, change to 3600 for production
+  setInterval(() => {
+    const activeTimers = db.prepare('SELECT te.*, t.title as task_title FROM time_entries te JOIN tasks t ON te.task_id = t.id WHERE te.ended_at IS NULL').all()
+    for (const timer of activeTimers) {
+      const startedAt = new Date(timer.started_at + '-03:00').getTime()
+      const elapsed = Math.floor((Date.now() - startedAt) / 1000)
+      if (elapsed > 0 && elapsed % TIMER_CHECK_SECONDS < 60) { // Within 1 minute of each interval
+        sendToUser(timer.user_id, 'timer:check', { taskId: timer.task_id, taskTitle: timer.task_title, elapsed })
+      }
+    }
+  }, 30000) // Check every 30 seconds
+})

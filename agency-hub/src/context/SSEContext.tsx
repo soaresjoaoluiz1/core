@@ -15,7 +15,7 @@ export function SSEProvider({ children }: { children: ReactNode }) {
     const es = new EventSource(`${base}/api/events?token=${token}`)
     es.onopen = () => setConnected(true)
     es.onerror = () => setConnected(false)
-    for (const type of ['task:created', 'task:updated', 'task:stage_changed', 'task:comment', 'approval:pending', 'notification:new']) {
+    for (const type of ['task:created', 'task:updated', 'task:stage_changed', 'task:comment', 'approval:pending', 'notification:new', 'timer:check']) {
       es.addEventListener(type, (e) => {
         try { const data = JSON.parse((e as MessageEvent).data); handlers.current.get(type)?.forEach(h => h(data)) } catch {}
       })
