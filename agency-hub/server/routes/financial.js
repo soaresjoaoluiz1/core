@@ -56,11 +56,12 @@ router.get('/overview', (req, res) => {
     const isLate = isPastMonth || (isCurrentMonth && currentDay > payDay)
 
     if (isLate && fee > 0) {
-      // Calculate days late
+      // Calculate days late — 2% fixed penalty + 1% per 30 days after
       const dueDate = new Date(reqYear, reqMonth - 1, payDay)
       const diffMs = spNow.getTime() - dueDate.getTime()
       const daysLate = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
-      const penalty = Math.round(fee * 0.01 * daysLate * 100) / 100
+      const monthsLate = Math.floor(daysLate / 30)
+      const penalty = Math.round(fee * (0.02 + 0.01 * monthsLate) * 100) / 100
       const totalDue = Math.round((fee + penalty) * 100) / 100
       totalLate += totalDue
       lateCount++

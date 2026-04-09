@@ -38,6 +38,8 @@ export default function Financial() {
   const [payDate, setPayDate] = useState('')
   const [payAmount, setPayAmount] = useState('')
   const [saving, setSaving] = useState(false)
+  const [sortField, setSortField] = useState<string>('status')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   // Despesas state
   const [expCategories, setExpCategories] = useState<ExpenseCategory[]>([])
@@ -162,6 +164,24 @@ export default function Financial() {
     load()
   }
 
+  const toggleSort = (field: string) => {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortField(field); setSortDir('asc') }
+  }
+  const sortedClients = [...(overview?.clients || [])].filter(c => c.monthly_fee > 0).sort((a: any, b: any) => {
+    const order = { late: 0, pending: 1, paid: 2 }
+    let va: any, vb: any
+    if (sortField === 'status') { va = order[a.status]; vb = order[b.status] }
+    else if (sortField === 'name') { va = a.name.toLowerCase(); vb = b.name.toLowerCase() }
+    else { va = a[sortField] || 0; vb = b[sortField] || 0 }
+    return sortDir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1)
+  })
+  const SortHead = ({ field, children, right }: { field: string; children: any; right?: boolean }) => (
+    <th className={right ? 'right' : ''} style={{ cursor: 'pointer' }} onClick={() => toggleSort(field)}>
+      {children} {sortField === field && <span style={{ color: '#FFB300', fontSize: 10 }}>{sortDir === 'asc' ? '▲' : '▼'}</span>}
+    </th>
+  )
+
   const s = overview?.summary
   const chartData = dashboard.map((d: any) => ({ name: MONTH_NAMES[parseInt(d.month.split('-')[1]) - 1], Receita: d.revenue, Despesas: d.expenses }))
 
@@ -249,9 +269,9 @@ export default function Financial() {
           <div className="table-card">
             <div style={{ overflowX: 'auto' }}>
               <table className="campaign-table">
-                <thead><tr><th>Cliente</th><th className="right">Mensalidade</th><th className="right">Venc.</th><th>Status</th><th className="right">Atraso</th><th className="right">Multa</th><th className="right">Total</th><th className="right">Pago em</th><th></th></tr></thead>
+                <thead><tr><SortHead field="name">Cliente</SortHead><SortHead field="monthly_fee" right>Mensalidade</SortHead><SortHead field="payment_day" right>Venc.</SortHead><SortHead field="status">Status</SortHead><SortHead field="days_late" right>Atraso</SortHead><SortHead field="penalty" right>Multa</SortHead><SortHead field="total_due" right>Total</SortHead><th className="right">Pago em</th><th></th></tr></thead>
                 <tbody>
-                  {overview?.clients.filter(c => c.monthly_fee > 0).map(c => (
+                  {sortedClients.map(c => (
                     <tr key={c.id} style={{ background: c.status === 'late' ? 'rgba(255,107,107,0.03)' : undefined }}>
                       <td style={{ fontWeight: 600 }}>{c.name}</td>
                       <td className="right">{formatBRL(c.monthly_fee)}</td>
