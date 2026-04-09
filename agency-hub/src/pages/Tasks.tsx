@@ -42,6 +42,8 @@ export default function Tasks() {
   const [search, setSearch] = useState('')
   const [filterClient, setFilterClient] = useState('')
   const [filterStage, setFilterStage] = useState('')
+  const [filterStages, setFilterStages] = useState<Set<string>>(new Set())
+  const [showStageFilter, setShowStageFilter] = useState(false)
   const [filterDept, setFilterDept] = useState('')
   const [filterPriority, setFilterPriority] = useState('')
   const [filterAssigned, setFilterAssigned] = useState(isFunc ? String(user?.id || '') : '')
@@ -67,7 +69,7 @@ export default function Tasks() {
     setLoading(true)
     const filters: any = { search, page, limit: 30 }
     if (filterClient) filters.client_id = +filterClient
-    if (filterStage) filters.stage = filterStage
+    if (filterStages.size === 1) filters.stage = [...filterStages][0]
     if (filterDept) filters.department_id = +filterDept
     if (filterPriority) filters.priority = filterPriority
     if (filterAssigned) filters.assigned_to = +filterAssigned
@@ -86,7 +88,10 @@ export default function Tasks() {
     }).finally(() => setLoading(false))
   }
 
-  useEffect(loadTasks, [search, filterClient, filterStage, filterDept, filterPriority, filterAssigned, dateFrom, dateTo, page, sortField, sortDir])
+  useEffect(loadTasks, [search, filterClient, filterStage, filterStages.size, filterDept, filterPriority, filterAssigned, dateFrom, dateTo, page, sortField, sortDir])
+
+  // Client-side multi-stage filter
+  const filteredTasks = filterStages.size > 1 ? tasks.filter(t => filterStages.has(t.stage)) : tasks
 
   const handleCreate = async () => {
     if (!newTask.title || !newTask.client_id) return
@@ -146,7 +151,31 @@ export default function Tasks() {
       {/* Filters */}
       <div className="filter-bar">
         <input className="input search-input" placeholder="Buscar..." value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
-        <select className="select" value={filterStage} onChange={e => { setFilterStage(e.target.value); setPage(1) }}><option value="">Todas etapas</option>{stages.map(s => <option key={s.id} value={s.slug}>{s.name}</option>)}</select>
+        <div style={{ position: 'relative' }}>
+          <button className="select" onClick={() => setShowStageFilter(p => !p)} style={{ cursor: 'pointer', minWidth: 150, textAlign: 'left' }}>
+            {filterStages.size === 0 ? 'Todas etapas' : filterStages.size === 1 ? stages.find(s => filterStages.has(s.slug))?.name : `${filterStages.size} etapas`} ▾
+          </button>
+          {showStageFilter && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 8, padding: 6, minWidth: 200, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+              <button onClick={() => { setFilterStages(new Set()); setFilterStage(''); setPage(1) }} style={{ display: 'block', width: '100%', padding: '6px 10px', background: filterStages.size === 0 ? 'rgba(255,179,0,0.12)' : 'transparent', border: 'none', borderRadius: 4, color: filterStages.size === 0 ? '#FFB300' : '#A8A3B8', fontSize: 12, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>Todas etapas</button>
+              {stages.map(s => {
+                const on = filterStages.has(s.slug)
+                return <button key={s.slug} onClick={() => {
+                  setFilterStages(prev => {
+                    const next = new Set(prev)
+                    if (on) next.delete(s.slug); else next.add(s.slug)
+                    setFilterStage(next.size === 1 ? [...next][0] : '')
+                    setPage(1)
+                    return next
+                  })
+                }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 10px', background: on ? 'rgba(255,179,0,0.08)' : 'transparent', border: 'none', borderRadius: 4, color: on ? '#FFB300' : '#A8A3B8', fontSize: 12, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                  <span style={{ width: 14, height: 14, borderRadius: 3, border: `2px solid ${on ? s.color : 'rgba(255,255,255,0.12)'}`, background: on ? s.color : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: on ? '#0A0118' : 'transparent', flexShrink: 0 }}>{on ? '✓' : ''}</span>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color, flexShrink: 0 }} />{s.name}
+                </button>
+              })}
+            </div>
+          )}
+        </div>
         {isDono && <select className="select" value={filterClient} onChange={e => { setFilterClient(e.target.value); setPage(1) }}><option value="">Todos clientes</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}
         <select className="select" value={filterPriority} onChange={e => { setFilterPriority(e.target.value); setPage(1) }}><option value="">Prioridades</option><option value="urgent">Urgente</option><option value="high">Alta</option><option value="normal">Normal</option><option value="low">Baixa</option></select>
         {isDono && <select className="select" value={filterAssigned} onChange={e => { setFilterAssigned(e.target.value); setPage(1) }}><option value="">Todos</option>{allUsers.filter(u => u.role !== 'cliente').map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select>}
@@ -155,8 +184,8 @@ export default function Tasks() {
         <input className="input" type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1) }} style={{ width: 150 }} />
         <span style={{ color: '#6B6580', fontSize: 12 }}>ate</span>
         <input className="input" type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1) }} style={{ width: 150 }} />
-        {(search || filterStage || filterClient || filterPriority || filterAssigned || dateFrom || dateTo) && (
-          <button className="btn btn-secondary btn-sm" onClick={() => { setSearch(''); setFilterStage(''); setFilterClient(''); setFilterPriority(''); setFilterAssigned(isFunc ? String(user?.id) : ''); setDateFrom(''); setDateTo(''); setPage(1) }}>Limpar</button>
+        {(search || filterStage || filterStages.size > 0 || filterClient || filterPriority || filterAssigned || dateFrom || dateTo) && (
+          <button className="btn btn-secondary btn-sm" onClick={() => { setSearch(''); setFilterStage(''); setFilterStages(new Set()); setFilterClient(''); setFilterPriority(''); setFilterAssigned(isFunc ? String(user?.id) : ''); setDateFrom(''); setDateTo(''); setPage(1) }}>Limpar</button>
         )}
       </div>
 
@@ -185,7 +214,7 @@ export default function Tasks() {
               <SortHeader field="created_at">Criado</SortHeader>
             </tr></thead>
             <tbody>
-              {tasks.map(t => {
+              {filteredTasks.map(t => {
                 const overdue = isOverdue(t.due_date) && t.stage !== 'concluido' && t.stage !== 'rejeitado'
                 const soon = isDueSoon(t.due_date) && !overdue
                 const pc = PRIORITY_COLORS[t.priority] || PRIORITY_COLORS.normal
