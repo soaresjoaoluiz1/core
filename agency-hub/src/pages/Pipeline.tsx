@@ -27,6 +27,7 @@ export default function Pipeline() {
   const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set())
   const [moveTaskId, setMoveTaskId] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [showTerminal, setShowTerminal] = useState(() => localStorage.getItem('pipeline_show_terminal') === '1')
   const [categories, setCategories] = useState<TaskCategory[]>([])
   const [showNew, setShowNew] = useState(false)
   const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link_raw: '' })
@@ -87,7 +88,7 @@ export default function Pipeline() {
   if (isMobile) return (
     <div>
       <div className="page-header"><h1>Pipeline</h1></div>
-      {stages.filter(s => true).map(stage => {
+      {stages.filter(s => showTerminal || !s.is_terminal).map(stage => {
         const stageTasks = tasks.filter(t => t.stage === stage.slug)
         const expanded = expandedStages.has(stage.slug)
         return (
@@ -150,10 +151,13 @@ export default function Pipeline() {
             <select className="select" style={{ width: 160 }} value={filterClient} onChange={e => setFilterClient(e.target.value)}><option value="">Todos clientes</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
             <select className="select" style={{ width: 160 }} value={filterDept} onChange={e => setFilterDept(e.target.value)}><option value="">Todos deptos</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
           </>}
+          <button className={`btn btn-sm ${showTerminal ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setShowTerminal(p => { const v = !p; localStorage.setItem('pipeline_show_terminal', v ? '1' : '0'); return v }) }} style={{ fontSize: 11 }}>
+            {showTerminal ? 'Ocultar Concluidos' : 'Mostrar Concluidos'}
+          </button>
         </div>
       </div>
       <div className="kanban-board">
-        {stages.filter(s => true).map(stage => {
+        {stages.filter(s => showTerminal || !s.is_terminal).map(stage => {
           const searchLower = searchQuery.toLowerCase()
           const stageTasks = tasks.filter(t => t.stage === stage.slug && (!searchQuery || t.title.toLowerCase().includes(searchLower) || t.client_name?.toLowerCase().includes(searchLower) || t.assigned_name?.toLowerCase().includes(searchLower)))
           return (

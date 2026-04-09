@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
-import { fetchTask, fetchClients, fetchDepartments, fetchUsers, fetchCategories, updateTask, moveTaskStage, addTaskComment, addTaskAttachment, approveTask, rejectTask, startTimer, stopTimer, type Task, type TaskComment, type TaskHistory, type TaskAttachment, type TimeEntry, type Client, type Department, type User as UserT, type TaskCategory } from '../lib/api'
+import { fetchTask, fetchClients, fetchDepartments, fetchUsers, fetchCategories, fetchStages, updateTask, moveTaskStage, addTaskComment, addTaskAttachment, approveTask, rejectTask, startTimer, stopTimer, type Task, type TaskComment, type TaskHistory, type TaskAttachment, type TimeEntry, type Client, type Department, type User as UserT, type TaskCategory, type PipelineStage } from '../lib/api'
 import { ArrowLeft, Building2, Clock, User, ExternalLink, CheckCircle, XCircle, Send, MessageCircle, GitBranch, Paperclip, Eye, Edit3, Save, X, Plus, AlertTriangle } from 'lucide-react'
 
 export default function TaskDetail() {
@@ -29,6 +29,7 @@ export default function TaskDetail() {
   const [editData, setEditData] = useState<any>({})
   const [clients, setClients] = useState<Client[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
+  const [stages, setStages] = useState<PipelineStage[]>([])
   const [users, setUsers] = useState<UserT[]>([])
   const [categories, setCategories] = useState<TaskCategory[]>([])
   // Attachment
@@ -52,7 +53,7 @@ export default function TaskDetail() {
   useEffect(() => {
     setLoading(true)
     const loadMeta = isDono || isFunc
-    Promise.all([loadTask(), loadMeta ? fetchClients().then(setClients) : Promise.resolve(), loadMeta ? fetchDepartments().then(setDepartments) : Promise.resolve(), loadMeta ? fetchUsers().then(setUsers) : Promise.resolve(), fetchCategories().then(setCategories)])
+    Promise.all([loadTask(), loadMeta ? fetchClients().then(setClients) : Promise.resolve(), loadMeta ? fetchDepartments().then(setDepartments) : Promise.resolve(), loadMeta ? fetchUsers().then(setUsers) : Promise.resolve(), fetchCategories().then(setCategories), fetchStages().then(setStages)])
       .finally(() => setLoading(false))
   }, [loadTask, isDono])
   useSSE('task:stage_changed', useCallback((data: any) => { if (data.id === parseInt(id || '0')) loadTask() }, [id, loadTask]))
@@ -140,6 +141,12 @@ export default function TaskDetail() {
           {canApproveClient && <><button className="btn btn-primary btn-sm" onClick={handleApprove}><CheckCircle size={12} /> Aprovar</button><button className="btn btn-danger btn-sm" onClick={() => setShowReject(true)}><XCircle size={12} /> Rejeitar</button></>}
           {canSchedule && <button className="btn btn-primary btn-sm" onClick={() => handleStageMove('programar_publicacao')}>Programar</button>}
           {canComplete && <button className="btn btn-primary btn-sm" onClick={() => handleStageMove('concluido')}><CheckCircle size={12} /> Concluir</button>}
+          {(isDono || isFunc) && stages.length > 0 && (
+            <select className="select" style={{ fontSize: 12, padding: '6px 10px', width: 'auto', minWidth: 140 }} value="" onChange={e => { if (e.target.value) handleStageMove(e.target.value) }}>
+              <option value="">Mover para...</option>
+              {stages.filter(s => s.slug !== task.stage).map(s => <option key={s.slug} value={s.slug}>{s.name}</option>)}
+            </select>
+          )}
         </div>
       </div>
 
