@@ -13,7 +13,7 @@ router.get('/', (req, res) => {
   res.json({ departments })
 })
 
-router.post('/', requireRole('dono'), (req, res) => {
+router.post('/', requireRole('dono', 'gerente'), (req, res) => {
   const { name, color } = req.body
   if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
   try {
@@ -22,7 +22,7 @@ router.post('/', requireRole('dono'), (req, res) => {
   } catch { res.status(400).json({ error: 'Departamento ja existe' }) }
 })
 
-router.put('/:id', requireRole('dono'), (req, res) => {
+router.put('/:id', requireRole('dono', 'gerente'), (req, res) => {
   const { name, color, is_active } = req.body
   const sets = []; const params = []
   if (name !== undefined) { sets.push('name = ?'); params.push(name) }

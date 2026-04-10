@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
-import { fetchPipelineTasks, fetchClients, fetchDepartments, fetchUsers, fetchCategories, createTask, moveTaskStage, type Task, type PipelineStage, type Client, type Department, type User as UserT, type TaskCategory } from '../lib/api'
-import { Clock, Building2, User, ExternalLink, ChevronDown, ChevronRight, ArrowRight, Search, AlertTriangle, Plus } from 'lucide-react'
+import { fetchPipelineTasks, fetchClients, fetchDepartments, fetchUsers, fetchCategories, createTask, createEditorialTask, moveTaskStage, type Task, type PipelineStage, type Client, type Department, type User as UserT, type TaskCategory } from '../lib/api'
+import { Clock, Building2, User, ExternalLink, ChevronDown, ChevronRight, ArrowRight, Search, AlertTriangle, Plus, Layers } from 'lucide-react'
 
 function timeAgo(d: string) { const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000); if (m < 60) return `${m}m`; const h = Math.floor(m / 60); if (h < 24) return `${h}h`; return `${Math.floor(h / 24)}d` }
 function todayStr() { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}` }
@@ -30,8 +30,10 @@ export default function Pipeline() {
   const [showTerminal, setShowTerminal] = useState(() => localStorage.getItem('pipeline_show_terminal') === '1')
   const [categories, setCategories] = useState<TaskCategory[]>([])
   const [showNew, setShowNew] = useState(false)
+  const [showNewEditorial, setShowNewEditorial] = useState(false)
+  const [newEditorial, setNewEditorial] = useState({ client_id: '', month_label: '', num_posts: '8', num_videos: '4', due_date: '', category_id: '' })
   const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link_raw: '' })
-  const isDono = user?.role === 'dono'
+  const isDono = user?.role === 'dono' || user?.role === 'gerente'
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -69,6 +71,21 @@ export default function Pipeline() {
     if (!newTask.title || !newTask.client_id) return
     await createTask({ ...newTask, client_id: +newTask.client_id, category_id: newTask.category_id ? +newTask.category_id : undefined, department_id: newTask.department_id ? +newTask.department_id : undefined, assigned_to: newTask.assigned_to.map(Number) } as any)
     setShowNew(false); setNewTask({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [], due_date: '', priority: 'normal', drive_link_raw: '' }); loadData()
+  }
+
+  const handleCreateEditorial = async () => {
+    if (!newEditorial.client_id || !newEditorial.month_label) return
+    await createEditorialTask({
+      client_id: +newEditorial.client_id,
+      month_label: newEditorial.month_label,
+      num_posts: newEditorial.num_posts ? +newEditorial.num_posts : undefined,
+      num_videos: newEditorial.num_videos ? +newEditorial.num_videos : undefined,
+      due_date: newEditorial.due_date || undefined,
+      category_id: newEditorial.category_id ? +newEditorial.category_id : undefined,
+    })
+    setShowNewEditorial(false)
+    setNewEditorial({ client_id: '', month_label: '', num_posts: '8', num_videos: '4', due_date: '', category_id: '' })
+    loadData()
   }
 
   const handleMobileMove = async (taskId: number, stageSlug: string) => {
@@ -141,6 +158,7 @@ export default function Pipeline() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1>Pipeline</h1>
           {(isDono || user?.role === 'funcionario') && <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}><Plus size={14} /> Nova Tarefa</button>}
+          {isDono && <button className="btn btn-secondary btn-sm" onClick={() => setShowNewEditorial(true)}><Layers size={14} /> Linha Editorial</button>}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative' }}>
@@ -192,6 +210,12 @@ export default function Pipeline() {
                       </div>
                       {task.due_date && <span style={{ color: isOverdue(task.due_date) ? '#FF6B6B' : '#6B6580', fontWeight: isOverdue(task.due_date) ? 700 : 400, display: 'flex', alignItems: 'center', gap: 3 }}>{isOverdue(task.due_date) && <AlertTriangle size={9} />}<Clock size={10} />{task.due_date.slice(5, 10)}</span>}
                     </div>
+                    {!!(task as any).subtask_count && (
+                      <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#9B96B0' }}>
+                        <Layers size={10} style={{ color: '#FFB300' }} />
+                        <span>{(task as any).subtask_done_count || 0}/{(task as any).subtask_count} subtarefas</span>
+                      </div>
+                    )}
                     {task.drive_link && <div style={{ marginTop: 4 }}><ExternalLink size={10} style={{ color: '#5DADE2' }} /></div>}
                   </div>
                 ))}
@@ -221,6 +245,37 @@ export default function Pipeline() {
           </div>
           <div className="form-group"><label>Link Drive (Arquivo Bruto)</label><input className="input" value={newTask.drive_link_raw} onChange={e => setNewTask(p => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
           <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNew(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreateTask}>Criar Tarefa</button></div>
+        </div></div>
+      )}
+
+      {/* New Editorial modal */}
+      {showNewEditorial && (
+        <div className="modal-overlay" onClick={() => setShowNewEditorial(false)}><div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+          <h2><Layers size={18} style={{ marginRight: 8, verticalAlign: 'middle', color: '#FFB300' }} />Nova Linha Editorial</h2>
+          <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Cria uma tarefa-mae com 5 subtarefas fixas: Briefing, Aprovacoes e Publicacao.</p>
+          <div className="form-row">
+            <div className="form-group"><label>Cliente *</label><select className="select" value={newEditorial.client_id} onChange={e => setNewEditorial(p => ({ ...p, client_id: e.target.value }))}><option value="">Selecione</option>{clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+            <div className="form-group"><label>Mes/Referencia *</label><input className="input" placeholder="Ex: Janeiro 2026" value={newEditorial.month_label} onChange={e => setNewEditorial(p => ({ ...p, month_label: e.target.value }))} /></div>
+          </div>
+          <div className="form-row">
+            <div className="form-group"><label>Qtd Posts</label><input className="input" type="number" min="0" value={newEditorial.num_posts} onChange={e => setNewEditorial(p => ({ ...p, num_posts: e.target.value }))} /></div>
+            <div className="form-group"><label>Qtd Videos</label><input className="input" type="number" min="0" value={newEditorial.num_videos} onChange={e => setNewEditorial(p => ({ ...p, num_videos: e.target.value }))} /></div>
+          </div>
+          <div className="form-row">
+            <div className="form-group"><label>Prazo Final</label><input className="input" type="date" value={newEditorial.due_date} onChange={e => setNewEditorial(p => ({ ...p, due_date: e.target.value }))} /></div>
+            <div className="form-group"><label>Categoria</label><select className="select" value={newEditorial.category_id} onChange={e => setNewEditorial(p => ({ ...p, category_id: e.target.value }))}><option value="">Nenhuma</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+          </div>
+          <div style={{ padding: '10px 12px', background: 'rgba(255,179,0,0.06)', border: '1px solid rgba(255,179,0,0.18)', borderRadius: 8, fontSize: 11, color: '#A8A3B8', marginBottom: 12 }}>
+            <strong style={{ color: '#FFB300' }}>Subtarefas geradas:</strong>
+            <ol style={{ margin: '6px 0 0 16px', padding: 0 }}>
+              <li>Briefing (Ideias + Copies) - Social Media</li>
+              <li>Aprovacao Cliente (Briefing)</li>
+              <li>Aprovacao Interna Final</li>
+              <li>Aprovacao Cliente (Final)</li>
+              <li>Publicacao - Social Media</li>
+            </ol>
+          </div>
+          <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNewEditorial(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreateEditorial} disabled={!newEditorial.client_id || !newEditorial.month_label}>Criar Linha Editorial</button></div>
         </div></div>
       )}
     </div>

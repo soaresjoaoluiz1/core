@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
 import { fetchTask, fetchClients, fetchDepartments, fetchUsers, fetchCategories, fetchStages, updateTask, moveTaskStage, addTaskComment, addTaskAttachment, approveTask, rejectTask, startTimer, stopTimer, type Task, type TaskComment, type TaskHistory, type TaskAttachment, type TimeEntry, type Client, type Department, type User as UserT, type TaskCategory, type PipelineStage } from '../lib/api'
-import { ArrowLeft, Building2, Clock, User, ExternalLink, CheckCircle, XCircle, Send, MessageCircle, GitBranch, Paperclip, Eye, Edit3, Save, X, Plus, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Building2, Clock, User, ExternalLink, CheckCircle, XCircle, Send, MessageCircle, GitBranch, Paperclip, Eye, Edit3, Save, X, Plus, AlertTriangle, Layers, ChevronRight } from 'lucide-react'
 
 export default function TaskDetail() {
   const { id } = useParams()
@@ -174,6 +174,44 @@ export default function TaskDetail() {
       <div className="lead-detail">
         {/* Left: Info */}
         <div>
+          {/* Parent task summary (when viewing a subtask) */}
+          {(task as any).parent && (
+            <div className="card" style={{ marginBottom: 12, borderLeft: '3px solid #FFB300', background: 'rgba(255,179,0,0.04)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Layers size={12} /> Tarefa-Mae
+                </div>
+                <button className="btn btn-secondary btn-sm" onClick={() => navigate(`/tasks/${(task as any).parent.id}`)}>
+                  Abrir mae <ChevronRight size={12} />
+                </button>
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-heading)', marginBottom: 6 }}>
+                {(task as any).parent.title}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#9B96B0', marginBottom: 10, flexWrap: 'wrap' }}>
+                <span className="stage-badge" style={{ background: `${(task as any).parent.stage_color}20`, color: (task as any).parent.stage_color }}>{(task as any).parent.stage_name}</span>
+                {(task as any).parent.assigned_name && <span><User size={10} /> {(task as any).parent.assigned_name}</span>}
+                {(task as any).parent.due_date && <span><Clock size={10} /> {(task as any).parent.due_date.slice(0, 10)}</span>}
+              </div>
+              {/* Sibling navigation */}
+              {(task as any).parent.subtasks?.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+                  {(task as any).parent.subtasks.map((s: any) => {
+                    const isCurrent = s.id === task.id
+                    return (
+                      <div key={s.id} onClick={() => !isCurrent && navigate(`/tasks/${s.id}`)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 6, fontSize: 12, cursor: isCurrent ? 'default' : 'pointer', background: isCurrent ? 'rgba(255,179,0,0.12)' : 'rgba(255,255,255,0.02)', border: `1px solid ${isCurrent ? 'rgba(255,179,0,0.3)' : 'rgba(255,255,255,0.04)'}` }}>
+                        <span style={{ width: 18, height: 18, borderRadius: '50%', background: s.stage_color || '#6B6580', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.subtask_position}</span>
+                        <span style={{ flex: 1, fontWeight: isCurrent ? 700 : 400, color: isCurrent ? '#F2F0F7' : '#9B96B0' }}>{s.title.replace((task as any).parent.title + ' - ', '')}</span>
+                        <span style={{ fontSize: 10, color: s.stage_color }}>{s.stage_name}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="card" style={{ marginBottom: 16 }}>
             {/* Edit toggle */}
             {canEdit && !editing && (
@@ -257,6 +295,53 @@ export default function TaskDetail() {
               </>
             )}
           </div>
+
+          {/* Subtasks (when viewing a mother task) */}
+          {(task as any).subtasks?.length > 0 && (
+            <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid #FFB300' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Layers size={12} /> Subtarefas ({(task as any).subtasks.filter((s: any) => s.stage === 'concluido').length}/{(task as any).subtasks.length})
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {(task as any).subtasks.map((sub: any) => {
+                  const isOverdueSub = sub.due_date && sub.due_date.slice(0, 10) < (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}` })() && sub.stage !== 'concluido' && sub.stage !== 'rejeitado'
+                  return (
+                    <div key={sub.id} onClick={() => navigate(`/tasks/${sub.id}`)}
+                      style={{ padding: '12px 14px', borderRadius: 8, cursor: 'pointer', background: 'rgba(255,255,255,0.02)', border: `1px solid ${sub.stage === 'concluido' ? 'rgba(52,199,89,0.2)' : 'rgba(255,255,255,0.06)'}`, borderLeft: `3px solid ${sub.stage_color || '#6B6580'}`, transition: 'background 0.15s' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                          <span style={{ width: 22, height: 22, borderRadius: '50%', background: sub.stage_color || '#6B6580', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{sub.subtask_position}</span>
+                          <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-heading)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {sub.title.replace(task.title + ' - ', '')}
+                          </span>
+                        </div>
+                        <span className="stage-badge" style={{ background: `${sub.stage_color}20`, color: sub.stage_color, flexShrink: 0 }}>{sub.stage_name}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11, color: '#6B6580', flexWrap: 'wrap' }}>
+                        {sub.department_name && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: sub.department_color }} />
+                            {sub.department_name}
+                          </span>
+                        )}
+                        {sub.assigned_name && <span><User size={10} /> {sub.assigned_name}</span>}
+                        {sub.due_date && (
+                          <span style={{ color: isOverdueSub ? '#FF6B6B' : '#6B6580', fontWeight: isOverdueSub ? 700 : 400, display: 'flex', alignItems: 'center', gap: 3 }}>
+                            <Clock size={10} /> {sub.due_date.slice(0, 10)}{isOverdueSub ? ' (atrasada)' : ''}
+                          </span>
+                        )}
+                        {sub.comment_count > 0 && <span><MessageCircle size={10} /> {sub.comment_count}</span>}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right column — different for client vs team */}
