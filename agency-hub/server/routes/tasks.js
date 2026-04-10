@@ -151,14 +151,14 @@ router.post('/editorial', requireRole('dono', 'gerente'), (req, res) => {
   const client = db.prepare('SELECT name FROM clients WHERE id = ?').get(client_id)
   if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' })
 
-  // Find "Social Media" department id
+  // Find departments by name
   const socialDept = db.prepare("SELECT id FROM departments WHERE name LIKE '%Social%' AND is_active = 1").get()
   const socialId = socialDept?.id || null
 
   const parentTitle = `Linha Editorial ${month_label} - ${client.name}`
   const createTask = db.prepare(`
-    INSERT INTO tasks (client_id, category_id, department_id, title, description, priority, due_date, created_by, stage, task_type, parent_task_id, subtask_position, num_posts, num_videos)
-    VALUES (?, ?, ?, ?, ?, 'normal', ?, ?, 'backlog', ?, ?, ?, ?, ?)
+    INSERT INTO tasks (client_id, category_id, department_id, title, description, priority, due_date, created_by, stage, task_type, parent_task_id, subtask_position, num_posts, num_videos, subtask_kind)
+    VALUES (?, ?, ?, ?, ?, 'normal', ?, ?, 'backlog', ?, ?, ?, ?, ?, ?)
   `)
   const histStmt = db.prepare('INSERT INTO task_history (task_id, to_stage, user_id) VALUES (?, ?, ?)')
 
@@ -168,24 +168,25 @@ router.post('/editorial', requireRole('dono', 'gerente'), (req, res) => {
       client_id, category_id || null, null, parentTitle,
       `Linha editorial com ${num_posts || 0} posts e ${num_videos || 0} videos`,
       due_date || null, req.user.id, 'mae_editorial', null, null,
-      num_posts || 0, num_videos || 0
+      num_posts || 0, num_videos || 0, null
     )
     const parentId = parentResult.lastInsertRowid
     histStmt.run(parentId, 'backlog', req.user.id)
 
-    // Fixed subtasks
+    // Initial subtasks (production tasks created on-demand via /confirm-recording)
+    // Positions: 1,2 (briefing), 3-6 reserved (gravacao,subir,editar,imagens), 7-9 (aprovacoes+publicacao)
     const subs = [
-      { title: 'Briefing (Ideias + Copies)', dept: socialId, pos: 1 },
-      { title: 'Aprovacao Cliente (Briefing)', dept: null, pos: 2 },
-      { title: 'Aprovacao Interna Final', dept: null, pos: 3 },
-      { title: 'Aprovacao Cliente (Final)', dept: null, pos: 4 },
-      { title: 'Publicacao', dept: socialId, pos: 5 },
+      { title: 'Briefing (Ideias + Copies)', dept: socialId, pos: 1, kind: 'briefing' },
+      { title: 'Aprovacao Cliente (Briefing)', dept: null, pos: 2, kind: 'aprov_briefing' },
+      { title: 'Aprovacao Interna Final', dept: null, pos: 7, kind: 'aprov_interna_final' },
+      { title: 'Aprovacao Cliente (Final)', dept: null, pos: 8, kind: 'aprov_cliente_final' },
+      { title: 'Publicacao', dept: socialId, pos: 9, kind: 'publicacao' },
     ]
     subs.forEach(s => {
       const r = createTask.run(
         client_id, category_id || null, s.dept,
         `${parentTitle} - ${s.title}`, null,
-        due_date || null, req.user.id, 'normal', parentId, s.pos, null, null
+        due_date || null, req.user.id, 'normal', parentId, s.pos, null, null, s.kind
       )
       histStmt.run(r.lastInsertRowid, 'backlog', req.user.id)
     })
@@ -197,6 +198,72 @@ router.post('/editorial', requireRole('dono', 'gerente'), (req, res) => {
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(parentId)
   broadcastSSE(task.client_id, 'task:created', task)
   res.json({ task, parent_id: parentId })
+})
+
+// Confirm recording date — creates Gravacao + Subir + Editar + Imagens subtasks
+router.post('/:id/confirm-recording', requireRole('dono', 'gerente'), (req, res) => {
+  const { recording_datetime, capture_user_id, edit_user_id, design_user_id } = req.body
+  if (!recording_datetime) return res.status(400).json({ error: 'recording_datetime obrigatorio' })
+
+  const parent = db.prepare('SELECT * FROM tasks WHERE id = ? AND task_type = ?').get(req.params.id, 'mae_editorial')
+  if (!parent) return res.status(404).json({ error: 'Tarefa-mae editorial nao encontrada' })
+
+  // Check if production tasks already exist
+  const existing = db.prepare("SELECT id FROM tasks WHERE parent_task_id = ? AND subtask_kind IN ('gravacao', 'subir_arquivos', 'editar_video', 'criar_imagens')").get(parent.id)
+  if (existing) return res.status(400).json({ error: 'Tarefas de producao ja foram criadas' })
+
+  const captacaoDept = db.prepare("SELECT id FROM departments WHERE (name LIKE '%Capt%' OR name LIKE '%Video%' OR name LIKE '%Producao%') AND is_active = 1").get()
+  const designDept = db.prepare("SELECT id FROM departments WHERE name LIKE '%Design%' AND is_active = 1").get()
+
+  const recordingDate = recording_datetime.slice(0, 10)
+  const insertTask = db.prepare(`
+    INSERT INTO tasks (client_id, category_id, department_id, title, description, priority, due_date, created_by, stage, task_type, parent_task_id, subtask_position, subtask_kind, recording_datetime)
+    VALUES (?, ?, ?, ?, ?, 'normal', ?, ?, 'backlog', 'normal', ?, ?, ?, ?)
+  `)
+  const histStmt = db.prepare('INSERT INTO task_history (task_id, to_stage, user_id) VALUES (?, ?, ?)')
+
+  const tx = db.transaction(() => {
+    // Update parent with recording datetime
+    db.prepare("UPDATE tasks SET recording_datetime = ?, updated_at = datetime('now', '-3 hours') WHERE id = ?").run(recording_datetime, parent.id)
+
+    const baseTitle = parent.title
+
+    // 1. Gravacao (Captacao, due = recording date)
+    const gravR = insertTask.run(parent.client_id, parent.category_id, captacaoDept?.id || null,
+      `${baseTitle} - Gravacao`, `Gravar conteudo em ${recordingDate}`,
+      recordingDate, req.user.id, parent.id, 3, 'gravacao', recording_datetime)
+    histStmt.run(gravR.lastInsertRowid, 'backlog', req.user.id)
+    if (capture_user_id) {
+      db.prepare('INSERT OR IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)').run(gravR.lastInsertRowid, capture_user_id)
+      db.prepare('UPDATE tasks SET assigned_to = ? WHERE id = ?').run(capture_user_id, gravR.lastInsertRowid)
+    }
+
+    // 4. Criar Imagens (Design, em paralelo)
+    const imgR = insertTask.run(parent.client_id, parent.category_id, designDept?.id || null,
+      `${baseTitle} - Criar Imagens`, `Criar ${parent.num_posts || 0} imagens para os posts`,
+      parent.due_date || null, req.user.id, parent.id, 6, 'criar_imagens', null)
+    histStmt.run(imgR.lastInsertRowid, 'backlog', req.user.id)
+    if (design_user_id) {
+      db.prepare('INSERT OR IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)').run(imgR.lastInsertRowid, design_user_id)
+      db.prepare('UPDATE tasks SET assigned_to = ? WHERE id = ?').run(imgR.lastInsertRowid, design_user_id)
+    }
+
+    // Store edit_user_id for later (when Subir Arquivos creates Editar Video)
+    if (edit_user_id) {
+      db.prepare("UPDATE tasks SET briefing_content = ? WHERE id = ?").run(JSON.stringify({ edit_user_id }), parent.id)
+    }
+
+    return { gravacaoId: gravR.lastInsertRowid, imagensId: imgR.lastInsertRowid }
+  })
+
+  const result = tx()
+  // Notifications
+  if (capture_user_id) notify(capture_user_id, 'task_assigned', 'Nova tarefa de gravacao', `"${parent.title} - Gravacao" em ${recordingDate}`, result.gravacaoId, req.user.id)
+  if (design_user_id) notify(design_user_id, 'task_assigned', 'Nova tarefa de imagens', `"${parent.title} - Criar Imagens"`, result.imagensId, req.user.id)
+  broadcastSSE(parent.client_id, 'task:created', { parent_id: parent.id })
+
+  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(parent.id)
+  res.json({ task: updated, ...result })
 })
 
 // Get task detail
@@ -363,8 +430,81 @@ router.put('/:id/stage', (req, res) => {
     getAssignees(updated.id).filter(a => a.user_id !== req.user.id).forEach(a => notify(a.user_id, 'task_completed', 'Tarefa concluida', `"${updated.title}"`, updated.id, req.user.id))
     notifyMany(getClientUsers(updated.client_id).map(u => u.id), 'task_completed', 'Tarefa concluida', `"${updated.title}"`, updated.id, req.user.id)
   }
+
+  // ===== Editorial workflow triggers (when subtask completes) =====
+  if (stage === 'concluido' && updated.parent_task_id && updated.subtask_kind) {
+    triggerEditorialWorkflow(updated, req.user.id)
+  }
+
   res.json({ task: updated })
 })
+
+// Editorial workflow trigger handler
+function triggerEditorialWorkflow(completedTask, userId) {
+  const parent = db.prepare('SELECT * FROM tasks WHERE id = ?').get(completedTask.parent_task_id)
+  if (!parent || parent.task_type !== 'mae_editorial') return
+
+  const insertTask = db.prepare(`
+    INSERT INTO tasks (client_id, category_id, department_id, title, description, priority, due_date, created_by, stage, task_type, parent_task_id, subtask_position, subtask_kind, assigned_to)
+    VALUES (?, ?, ?, ?, ?, 'normal', ?, ?, 'backlog', 'normal', ?, ?, ?, ?)
+  `)
+  const histStmt = db.prepare('INSERT INTO task_history (task_id, to_stage, user_id) VALUES (?, ?, ?)')
+
+  // Gravacao -> Subir Arquivos
+  if (completedTask.subtask_kind === 'gravacao') {
+    const exists = db.prepare("SELECT id FROM tasks WHERE parent_task_id = ? AND subtask_kind = 'subir_arquivos'").get(parent.id)
+    if (!exists) {
+      const captacaoDept = db.prepare("SELECT id FROM departments WHERE (name LIKE '%Capt%' OR name LIKE '%Video%' OR name LIKE '%Producao%') AND is_active = 1").get()
+      // Same person who did the recording does the upload
+      const captureUser = completedTask.assigned_to
+      const r = insertTask.run(parent.client_id, parent.category_id, captacaoDept?.id || null,
+        `${parent.title} - Subir Arquivos`, 'Subir arquivos brutos pro Drive pra edicao',
+        null, userId, parent.id, 4, 'subir_arquivos', captureUser || null)
+      histStmt.run(r.lastInsertRowid, 'backlog', userId)
+      if (captureUser) {
+        db.prepare('INSERT OR IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)').run(r.lastInsertRowid, captureUser)
+        notify(captureUser, 'task_assigned', 'Subir arquivos da gravacao', `"${parent.title} - Subir Arquivos"`, r.lastInsertRowid, userId)
+      }
+      broadcastSSE(parent.client_id, 'task:created', { parent_id: parent.id })
+    }
+  }
+
+  // Subir Arquivos -> Editar Video
+  if (completedTask.subtask_kind === 'subir_arquivos') {
+    const exists = db.prepare("SELECT id FROM tasks WHERE parent_task_id = ? AND subtask_kind = 'editar_video'").get(parent.id)
+    if (!exists) {
+      const edicaoDept = db.prepare("SELECT id FROM departments WHERE (name LIKE '%Ed%Vid%' OR name LIKE '%Edit%') AND is_active = 1").get()
+      // Get edit_user_id from parent.briefing_content (stored at confirm-recording)
+      let editUser = null
+      try { editUser = JSON.parse(parent.briefing_content || '{}').edit_user_id } catch {}
+      const r = insertTask.run(parent.client_id, parent.category_id, edicaoDept?.id || null,
+        `${parent.title} - Editar Video`, `Editar ${parent.num_videos || 0} videos`,
+        parent.due_date || null, userId, parent.id, 5, 'editar_video', editUser || null)
+      histStmt.run(r.lastInsertRowid, 'backlog', userId)
+      if (editUser) {
+        db.prepare('INSERT OR IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)').run(r.lastInsertRowid, editUser)
+        notify(editUser, 'task_assigned', 'Editar videos', `"${parent.title} - Editar Video"`, r.lastInsertRowid, userId)
+      }
+      broadcastSSE(parent.client_id, 'task:created', { parent_id: parent.id })
+    }
+  }
+
+  // When all production tasks done -> mother goes to aprovacao_interna
+  const productionKinds = ['briefing', 'aprov_briefing', 'gravacao', 'subir_arquivos', 'editar_video', 'criar_imagens']
+  const productionDone = db.prepare(`
+    SELECT COUNT(*) as total,
+      SUM(CASE WHEN stage = 'concluido' THEN 1 ELSE 0 END) as done
+    FROM tasks WHERE parent_task_id = ? AND is_active = 1 AND subtask_kind IN (${productionKinds.map(() => '?').join(',')})
+  `).get(parent.id, ...productionKinds)
+
+  if (productionDone.total > 0 && productionDone.total === productionDone.done && parent.stage !== 'aprovacao_interna') {
+    db.prepare("UPDATE tasks SET stage = 'aprovacao_interna', updated_at = datetime('now', '-3 hours') WHERE id = ?").run(parent.id)
+    db.prepare('INSERT INTO task_history (task_id, from_stage, to_stage, user_id, comment) VALUES (?, ?, ?, ?, ?)').run(parent.id, parent.stage, 'aprovacao_interna', userId, 'Auto: producao completa')
+    notifyMany(getDonoUsers().map(d => d.id), 'task_submitted_review', 'Linha editorial pronta pra aprovacao', `"${parent.title}"`, parent.id, userId)
+    const updatedParent = db.prepare('SELECT * FROM tasks WHERE id = ?').get(parent.id)
+    broadcastSSE(parent.client_id, 'task:stage_changed', updatedParent)
+  }
+}
 
 // Add comment
 router.post('/:id/comments', (req, res) => {

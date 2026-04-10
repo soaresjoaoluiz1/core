@@ -31,7 +31,9 @@ export interface Task {
   category_name?: string; category_color?: string; assigned_name?: string
   created_by_name?: string; comment_count?: number; stage_name?: string; stage_color?: string
   task_type?: string; parent_task_id?: number | null; subtask_position?: number | null
+  subtask_kind?: string | null
   num_posts?: number | null; num_videos?: number | null
+  recording_datetime?: string | null; briefing_content?: string | null
   subtask_count?: number; subtask_done_count?: number
   assignees?: { user_id: number; name: string }[]
   subtasks?: Task[]
@@ -80,6 +82,7 @@ export const fetchPipelineTasks = (filters: Record<string, any> = {}) => {
 }
 export const createTask = (data: Partial<Task>) => apiFetch<{ task: Task }>('/api/tasks', { method: 'POST', body: JSON.stringify(data) }).then(d => d.task)
 export const createEditorialTask = (data: { client_id: number; month_label: string; num_posts?: number; num_videos?: number; due_date?: string; category_id?: number }) => apiFetch<{ task: Task; parent_id: number }>('/api/tasks/editorial', { method: 'POST', body: JSON.stringify(data) })
+export const confirmRecording = (parentId: number, data: { recording_datetime: string; capture_user_id?: number; edit_user_id?: number; design_user_id?: number }) => apiFetch<{ task: Task; gravacaoId: number; imagensId: number }>(`/api/tasks/${parentId}/confirm-recording`, { method: 'POST', body: JSON.stringify(data) })
 export const fetchTask = (id: number) => apiFetch<{ task: Task; comments: TaskComment[]; history: TaskHistory[]; attachments: TaskAttachment[]; timeEntries: TimeEntry[]; totalTimeSeconds: number; activeTimer: TimeEntry | null }>(`/api/tasks/${id}`)
 export const updateTask = (id: number, data: Partial<Task>) => apiFetch(`/api/tasks/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 export const moveTaskStage = (id: number, stage: string, comment?: string) => apiFetch(`/api/tasks/${id}/stage`, { method: 'PUT', body: JSON.stringify({ stage, comment }) })
