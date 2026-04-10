@@ -15,7 +15,7 @@ router.get('/', requireRole('dono', 'funcionario'), (req, res) => {
   res.json({ clients })
 })
 
-router.post('/', requireRole('dono'), (req, res) => {
+router.post('/', requireRole('dono', 'gerente'), (req, res) => {
   const { name, contact_name, contact_email, contact_phone, logo_url, drive_folder, password } = req.body
   if (!name) return res.status(400).json({ error: 'Nome obrigatorio' })
   if (!contact_email) return res.status(400).json({ error: 'Email obrigatorio' })
@@ -38,7 +38,7 @@ router.post('/', requireRole('dono'), (req, res) => {
   res.json({ client: db.prepare('SELECT * FROM clients WHERE id = ?').get(clientId) })
 })
 
-router.get('/:id', requireRole('dono'), (req, res) => {
+router.get('/:id', requireRole('dono', 'gerente'), (req, res) => {
   const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id)
   if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' })
   const users = db.prepare('SELECT id, name, email, role, is_active FROM users WHERE client_id = ?').all(client.id)
@@ -47,7 +47,7 @@ router.get('/:id', requireRole('dono'), (req, res) => {
   res.json({ client, users, tasksByStage, credentials })
 })
 
-router.put('/:id', requireRole('dono'), (req, res) => {
+router.put('/:id', requireRole('dono', 'gerente'), (req, res) => {
   const { name, contact_name, contact_email, contact_phone, logo_url, drive_folder, is_active, monthly_fee, payment_day } = req.body
   const sets = []; const params = []
   if (name !== undefined) { sets.push('name = ?'); params.push(name) }
@@ -66,19 +66,19 @@ router.put('/:id', requireRole('dono'), (req, res) => {
 })
 
 // Client credentials (platform access)
-router.get('/:id/credentials', requireRole('dono'), (req, res) => {
+router.get('/:id/credentials', requireRole('dono', 'gerente'), (req, res) => {
   const credentials = db.prepare('SELECT * FROM client_credentials WHERE client_id = ? ORDER BY platform').all(req.params.id)
   res.json({ credentials })
 })
 
-router.post('/:id/credentials', requireRole('dono'), (req, res) => {
+router.post('/:id/credentials', requireRole('dono', 'gerente'), (req, res) => {
   const { platform, login, password, observation } = req.body
   if (!platform || !login || !password) return res.status(400).json({ error: 'platform, login e password obrigatorios' })
   const result = db.prepare('INSERT INTO client_credentials (client_id, platform, login, password, observation) VALUES (?, ?, ?, ?, ?)').run(req.params.id, platform, login, password, observation || null)
   res.json({ credential: db.prepare('SELECT * FROM client_credentials WHERE id = ?').get(result.lastInsertRowid) })
 })
 
-router.put('/:id/credentials/:credId', requireRole('dono'), (req, res) => {
+router.put('/:id/credentials/:credId', requireRole('dono', 'gerente'), (req, res) => {
   const { platform, login, password, observation } = req.body
   const sets = []; const params = []
   if (platform !== undefined) { sets.push('platform = ?'); params.push(platform) }
@@ -91,13 +91,13 @@ router.put('/:id/credentials/:credId', requireRole('dono'), (req, res) => {
   res.json({ credential: db.prepare('SELECT * FROM client_credentials WHERE id = ?').get(req.params.credId) })
 })
 
-router.delete('/:id/credentials/:credId', requireRole('dono'), (req, res) => {
+router.delete('/:id/credentials/:credId', requireRole('dono', 'gerente'), (req, res) => {
   db.prepare('DELETE FROM client_credentials WHERE id = ?').run(req.params.credId)
   res.json({ ok: true })
 })
 
 // Onboard - get all responses (authenticated)
-router.get('/:id/onboard', requireRole('dono'), (req, res) => {
+router.get('/:id/onboard', requireRole('dono', 'gerente'), (req, res) => {
   const entries = db.prepare('SELECT * FROM client_onboard WHERE client_id = ? ORDER BY created_at DESC').all(req.params.id)
   res.json({ entries: entries.map(e => ({ ...e, data: JSON.parse(e.data) })) })
 })

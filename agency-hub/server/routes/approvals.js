@@ -7,7 +7,7 @@ import { notify, notifyMany, getDonoUsers, getClientUsers } from '../notificatio
 const router = Router()
 
 // Internal approval queue (dono)
-router.get('/internal', requireRole('dono'), (req, res) => {
+router.get('/internal', requireRole('dono', 'gerente'), (req, res) => {
   const tasks = db.prepare(`
     SELECT t.*, c.name as client_name, d.name as department_name, u.name as assigned_name,
       cat.name as category_name, ps.name as stage_name, ps.color as stage_color
