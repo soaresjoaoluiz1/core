@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
-import { fetchTask, fetchClients, fetchDepartments, fetchUsers, fetchCategories, fetchStages, updateTask, moveTaskStage, addTaskComment, addTaskAttachment, approveTask, rejectTask, startTimer, stopTimer, confirmRecording, type Task, type TaskComment, type TaskHistory, type TaskAttachment, type TimeEntry, type Client, type Department, type User as UserT, type TaskCategory, type PipelineStage } from '../lib/api'
-import { ArrowLeft, Building2, Clock, User, ExternalLink, CheckCircle, XCircle, Send, MessageCircle, GitBranch, Paperclip, Eye, Edit3, Save, X, Plus, AlertTriangle, Layers, ChevronRight, Video } from 'lucide-react'
+import { fetchTask, fetchClients, fetchDepartments, fetchUsers, fetchCategories, fetchStages, updateTask, moveTaskStage, addTaskComment, addTaskAttachment, approveTask, rejectTask, startTimer, stopTimer, type Task, type TaskComment, type TaskHistory, type TaskAttachment, type TimeEntry, type Client, type Department, type User as UserT, type TaskCategory, type PipelineStage } from '../lib/api'
+import { ArrowLeft, Building2, Clock, User, ExternalLink, CheckCircle, XCircle, Send, MessageCircle, GitBranch, Paperclip, Eye, Edit3, Save, X, Plus, AlertTriangle, Layers, ChevronRight } from 'lucide-react'
 
 export default function TaskDetail() {
   const { id } = useParams()
@@ -35,9 +35,6 @@ export default function TaskDetail() {
   // Attachment
   const [newAttUrl, setNewAttUrl] = useState('')
   const [newAttName, setNewAttName] = useState('')
-  // Recording confirmation modal (editorial workflow)
-  const [showRecording, setShowRecording] = useState(false)
-  const [recordingData, setRecordingData] = useState({ recording_datetime: '', capture_user_id: '', edit_user_id: '', design_user_id: '' })
 
   const isDono = user?.role === 'dono'
   const isFunc = user?.role === 'funcionario'
@@ -118,19 +115,6 @@ export default function TaskDetail() {
 
   const handleApprove = async () => { if (task) { await approveTask(task.id); loadTask() } }
   const handleReject = async () => { if (task && rejectReason) { await rejectTask(task.id, rejectReason); setShowReject(false); setRejectReason(''); loadTask() } }
-
-  const handleConfirmRecording = async () => {
-    if (!task || !recordingData.recording_datetime) return
-    await confirmRecording(task.id, {
-      recording_datetime: recordingData.recording_datetime,
-      capture_user_id: recordingData.capture_user_id ? +recordingData.capture_user_id : undefined,
-      edit_user_id: recordingData.edit_user_id ? +recordingData.edit_user_id : undefined,
-      design_user_id: recordingData.design_user_id ? +recordingData.design_user_id : undefined,
-    })
-    setShowRecording(false)
-    setRecordingData({ recording_datetime: '', capture_user_id: '', edit_user_id: '', design_user_id: '' })
-    loadTask()
-  }
 
   const handleStageMove = async (stage: string) => {
     if (!task) return
@@ -311,23 +295,6 @@ export default function TaskDetail() {
               </>
             )}
           </div>
-
-          {/* Confirm Recording CTA — only when mother editorial, briefing aprov done, gravacao not yet created */}
-          {(task as any).task_type === 'mae_editorial' && (task as any).subtasks && (() => {
-            const subs: any[] = (task as any).subtasks
-            const aprovBriefing = subs.find(s => s.subtask_kind === 'aprov_briefing')
-            const gravacao = subs.find(s => s.subtask_kind === 'gravacao')
-            const briefingApproved = aprovBriefing && aprovBriefing.stage === 'concluido'
-            return briefingApproved && !gravacao
-          })() && (isDono || user?.role === 'gerente') && (
-            <div className="card" style={{ marginBottom: 12, background: 'linear-gradient(135deg, rgba(255,179,0,0.08), rgba(255,107,107,0.04))', border: '1px solid rgba(255,179,0,0.3)' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Briefing Aprovado</div>
-              <div style={{ fontSize: 14, color: '#F2F0F7', marginBottom: 12 }}>O cliente aprovou o briefing. Confirme a data de gravacao pra criar as tarefas de producao automaticamente.</div>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowRecording(true)}>
-                <Video size={14} /> Confirmar Data de Gravacao
-              </button>
-            </div>
-          )}
 
           {/* Subtasks (when viewing a mother task) */}
           {(task as any).subtasks?.length > 0 && (
@@ -520,54 +487,6 @@ export default function TaskDetail() {
           )}
         </div>
       </div>
-
-      {/* Confirm Recording modal */}
-      {showRecording && (
-        <div className="modal-overlay" onClick={() => setShowRecording(false)}><div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
-          <h2><Video size={18} style={{ marginRight: 8, verticalAlign: 'middle', color: '#FFB300' }} />Confirmar Data de Gravacao</h2>
-          <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Sera criada a tarefa de Gravacao (no dia escolhido) e Criar Imagens (em paralelo). Apos a Gravacao concluir, Subir Arquivos e Editar Video sao criadas automaticamente.</p>
-          <div className="form-group"><label>Data e Hora da Gravacao *</label><input className="input" type="datetime-local" value={recordingData.recording_datetime} onChange={e => setRecordingData(p => ({ ...p, recording_datetime: e.target.value }))} /></div>
-          <div className="form-group">
-            <label>Quem Grava (Captacao)</label>
-            <select className="select" value={recordingData.capture_user_id} onChange={e => setRecordingData(p => ({ ...p, capture_user_id: e.target.value }))}>
-              <option value="">Selecione</option>
-              {users.filter(u => u.role !== 'cliente' && u.is_active).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
-          </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Quem Edita Video</label>
-              <select className="select" value={recordingData.edit_user_id} onChange={e => setRecordingData(p => ({ ...p, edit_user_id: e.target.value }))}>
-                <option value="">Selecione</option>
-                {users.filter(u => u.role !== 'cliente' && u.is_active).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Quem Cria Imagens (Design)</label>
-              <select className="select" value={recordingData.design_user_id} onChange={e => setRecordingData(p => ({ ...p, design_user_id: e.target.value }))}>
-                <option value="">Selecione</option>
-                {users.filter(u => u.role !== 'cliente' && u.is_active).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
-            </div>
-          </div>
-          <div style={{ padding: '10px 12px', background: 'rgba(255,179,0,0.06)', border: '1px solid rgba(255,179,0,0.18)', borderRadius: 8, fontSize: 11, color: '#A8A3B8', marginBottom: 12 }}>
-            <strong style={{ color: '#FFB300' }}>O que sera criado agora:</strong>
-            <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
-              <li>Gravacao (prazo no dia da gravacao)</li>
-              <li>Criar Imagens (Design, em paralelo)</li>
-            </ul>
-            <strong style={{ color: '#FFB300', display: 'block', marginTop: 6 }}>Criadas automaticamente depois:</strong>
-            <ul style={{ margin: '6px 0 0 16px', padding: 0 }}>
-              <li>Subir Arquivos (apos gravacao concluir)</li>
-              <li>Editar Video (apos subir arquivos concluir)</li>
-            </ul>
-          </div>
-          <div className="modal-actions">
-            <button className="btn btn-secondary" onClick={() => setShowRecording(false)}>Cancelar</button>
-            <button className="btn btn-primary" onClick={handleConfirmRecording} disabled={!recordingData.recording_datetime}>Confirmar e Criar Tarefas</button>
-          </div>
-        </div></div>
-      )}
 
       {/* Reject modal */}
       {showReject && (

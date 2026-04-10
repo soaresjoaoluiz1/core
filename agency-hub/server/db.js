@@ -313,9 +313,7 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN recording_datetime TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN briefing_content TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN parent_task_id INTEGER") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN subtask_position INTEGER") } catch {}
-try { db.exec("ALTER TABLE tasks ADD COLUMN subtask_kind TEXT") } catch {}
 try { db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id)") } catch {}
-try { db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_subtask_kind ON tasks(subtask_kind)") } catch {}
 
 // Migrate users.role CHECK to include 'gerente' (SQLite requires table rebuild)
 try {
