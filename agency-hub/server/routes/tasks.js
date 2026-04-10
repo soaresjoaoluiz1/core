@@ -155,12 +155,17 @@ router.post('/editorial', requireRole('dono', 'gerente'), (req, res) => {
   const socialDept = db.prepare("SELECT id FROM departments WHERE name LIKE '%Social%' AND is_active = 1").get()
   const socialId = socialDept?.id || null
 
+  // Find Ivandro to auto-assign Briefing
+  const ivandro = db.prepare("SELECT id FROM users WHERE name LIKE '%Ivandro%' AND is_active = 1").get()
+  const ivandroId = ivandro?.id || null
+
   const parentTitle = `Linha Editorial ${month_label} - ${client.name}`
   const createTask = db.prepare(`
-    INSERT INTO tasks (client_id, category_id, department_id, title, description, priority, due_date, created_by, stage, task_type, parent_task_id, subtask_position, num_posts, num_videos, subtask_kind)
-    VALUES (?, ?, ?, ?, ?, 'normal', ?, ?, 'backlog', ?, ?, ?, ?, ?, ?)
+    INSERT INTO tasks (client_id, category_id, department_id, title, description, priority, due_date, created_by, stage, task_type, parent_task_id, subtask_position, num_posts, num_videos, subtask_kind, assigned_to)
+    VALUES (?, ?, ?, ?, ?, 'normal', ?, ?, 'backlog', ?, ?, ?, ?, ?, ?, ?)
   `)
   const histStmt = db.prepare('INSERT INTO task_history (task_id, to_stage, user_id) VALUES (?, ?, ?)')
+  const insertAssignee = db.prepare('INSERT OR IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)')
 
   const tx = db.transaction(() => {
     // Parent
@@ -168,7 +173,7 @@ router.post('/editorial', requireRole('dono', 'gerente'), (req, res) => {
       client_id, category_id || null, null, parentTitle,
       `Linha editorial com ${num_posts || 0} posts e ${num_videos || 0} videos`,
       due_date || null, req.user.id, 'mae_editorial', null, null,
-      num_posts || 0, num_videos || 0, null
+      num_posts || 0, num_videos || 0, null, null
     )
     const parentId = parentResult.lastInsertRowid
     histStmt.run(parentId, 'backlog', req.user.id)
@@ -176,19 +181,25 @@ router.post('/editorial', requireRole('dono', 'gerente'), (req, res) => {
     // Initial subtasks (production tasks created on-demand via /confirm-recording)
     // Positions: 1,2 (briefing), 3-6 reserved (gravacao,subir,editar,imagens), 7-9 (aprovacoes+publicacao)
     const subs = [
-      { title: 'Briefing (Ideias + Copies)', dept: socialId, pos: 1, kind: 'briefing' },
-      { title: 'Aprovacao Cliente (Briefing)', dept: null, pos: 2, kind: 'aprov_briefing' },
-      { title: 'Aprovacao Interna Final', dept: null, pos: 7, kind: 'aprov_interna_final' },
-      { title: 'Aprovacao Cliente (Final)', dept: null, pos: 8, kind: 'aprov_cliente_final' },
-      { title: 'Publicacao', dept: socialId, pos: 9, kind: 'publicacao' },
+      {
+        title: 'Briefing (Ideias + Copies)',
+        dept: socialId, pos: 1, kind: 'briefing',
+        description: 'Criar um documento no Docs com Briefing completo do conteudo + Ideias/Referencias + Copy/roteiro de todos os conteudos e anexar para aprovacao.',
+        assigned: ivandroId,
+      },
+      { title: 'Aprovacao Cliente (Briefing)', dept: null, pos: 2, kind: 'aprov_briefing', description: null, assigned: null },
+      { title: 'Aprovacao Interna Final', dept: null, pos: 7, kind: 'aprov_interna_final', description: null, assigned: null },
+      { title: 'Aprovacao Cliente (Final)', dept: null, pos: 8, kind: 'aprov_cliente_final', description: null, assigned: null },
+      { title: 'Publicacao', dept: socialId, pos: 9, kind: 'publicacao', description: null, assigned: null },
     ]
     subs.forEach(s => {
       const r = createTask.run(
         client_id, category_id || null, s.dept,
-        `${parentTitle} - ${s.title}`, null,
-        due_date || null, req.user.id, 'normal', parentId, s.pos, null, null, s.kind
+        `${s.title} - ${parentTitle}`, s.description,
+        due_date || null, req.user.id, 'normal', parentId, s.pos, null, null, s.kind, s.assigned
       )
       histStmt.run(r.lastInsertRowid, 'backlog', req.user.id)
+      if (s.assigned) insertAssignee.run(r.lastInsertRowid, s.assigned)
     })
 
     return parentId

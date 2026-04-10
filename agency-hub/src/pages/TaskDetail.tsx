@@ -218,7 +218,7 @@ export default function TaskDetail() {
                       <div key={s.id} onClick={() => !isCurrent && navigate(`/tasks/${s.id}`)}
                         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 6, fontSize: 12, cursor: isCurrent ? 'default' : 'pointer', background: isCurrent ? 'rgba(255,179,0,0.12)' : 'rgba(255,255,255,0.02)', border: `1px solid ${isCurrent ? 'rgba(255,179,0,0.3)' : 'rgba(255,255,255,0.04)'}` }}>
                         <span style={{ width: 18, height: 18, borderRadius: '50%', background: s.stage_color || '#6B6580', color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{s.subtask_position}</span>
-                        <span style={{ flex: 1, fontWeight: isCurrent ? 700 : 400, color: isCurrent ? '#F2F0F7' : '#9B96B0' }}>{s.title.replace((task as any).parent.title + ' - ', '')}</span>
+                        <span style={{ flex: 1, fontWeight: isCurrent ? 700 : 400, color: isCurrent ? '#F2F0F7' : '#9B96B0' }}>{s.title.replace(' - ' + (task as any).parent.title, '').replace((task as any).parent.title + ' - ', '')}</span>
                         <span style={{ fontSize: 10, color: s.stage_color }}>{s.stage_name}</span>
                       </div>
                     )
@@ -349,7 +349,7 @@ export default function TaskDetail() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
                           <span style={{ width: 22, height: 22, borderRadius: '50%', background: sub.stage_color || '#6B6580', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{sub.subtask_position}</span>
                           <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-heading)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {sub.title.replace(task.title + ' - ', '')}
+                            {sub.title.replace(' - ' + task.title, '').replace(task.title + ' - ', '')}
                           </span>
                         </div>
                         <span className="stage-badge" style={{ background: `${sub.stage_color}20`, color: sub.stage_color, flexShrink: 0 }}>{sub.stage_name}</span>
