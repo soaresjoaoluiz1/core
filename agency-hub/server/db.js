@@ -303,6 +303,24 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN publish_objective TEXT") } catch {}
 try { db.exec("ALTER TABLE clients ADD COLUMN onboard_token TEXT") } catch {}
 try { db.exec("ALTER TABLE client_services ADD COLUMN config TEXT DEFAULT '{}'") } catch {}
 try { db.exec("ALTER TABLE services ADD COLUMN fields TEXT DEFAULT '[]'") } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN parent_task_id INTEGER") } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN template_id INTEGER") } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN subtask_position INTEGER") } catch {}
+try { db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id)") } catch {}
+
+// Task templates (per service)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS task_templates (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    service_id  INTEGER,
+    name        TEXT NOT NULL,
+    color       TEXT DEFAULT '#FFB300',
+    subtasks    TEXT NOT NULL DEFAULT '[]',
+    is_active   INTEGER NOT NULL DEFAULT 1,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
+    FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE SET NULL
+  );
+`)
 try { db.exec("ALTER TABLE clients ADD COLUMN monthly_fee REAL DEFAULT 0") } catch {}
 try { db.exec("ALTER TABLE clients ADD COLUMN payment_day INTEGER DEFAULT 10") } catch {}
 

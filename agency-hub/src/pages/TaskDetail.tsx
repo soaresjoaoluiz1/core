@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
 import { fetchTask, fetchClients, fetchDepartments, fetchUsers, fetchCategories, fetchStages, updateTask, moveTaskStage, addTaskComment, addTaskAttachment, approveTask, rejectTask, startTimer, stopTimer, type Task, type TaskComment, type TaskHistory, type TaskAttachment, type TimeEntry, type Client, type Department, type User as UserT, type TaskCategory, type PipelineStage } from '../lib/api'
-import { ArrowLeft, Building2, Clock, User, ExternalLink, CheckCircle, XCircle, Send, MessageCircle, GitBranch, Paperclip, Eye, Edit3, Save, X, Plus, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Building2, Clock, User, ExternalLink, CheckCircle, XCircle, Send, MessageCircle, GitBranch, Paperclip, Eye, Edit3, Save, X, Plus, AlertTriangle, Layers } from 'lucide-react'
 
 export default function TaskDetail() {
   const { id } = useParams()
@@ -143,6 +143,15 @@ export default function TaskDetail() {
 
   return (
     <div>
+      {(task as any).parent && (
+        <div style={{ padding: '8px 14px', background: 'rgba(155,89,182,0.08)', border: '1px solid rgba(155,89,182,0.2)', borderRadius: 8, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#9B59B6' }}>
+          <GitBranch size={14} />
+          <span>Subtarefa de:</span>
+          <button onClick={() => navigate(`/tasks/${(task as any).parent.id}`)} style={{ background: 'transparent', border: 'none', color: '#9B59B6', fontWeight: 700, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', textDecoration: 'underline' }}>
+            {(task as any).parent.title}
+          </button>
+        </div>
+      )}
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button className="btn btn-secondary btn-icon" onClick={() => navigate(-1)}><ArrowLeft size={16} /></button>
@@ -151,6 +160,7 @@ export default function TaskDetail() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#A8A3B8' }}>
               <Building2 size={12} /> {task.client_name}
               <span className="stage-badge" style={{ background: `${task.stage_color}20`, color: task.stage_color }}>{task.stage_name}</span>
+              {((task as any).subtasks?.length || 0) > 0 && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 8px', borderRadius: 4, background: 'rgba(155,89,182,0.12)', color: '#9B59B6', fontWeight: 700 }}><Layers size={10} /> {(task as any).subtasks.filter((s: any) => s.stage === 'concluido').length}/{(task as any).subtasks.length} subtarefas</span>}
             </div>
           </div>
         </div>
@@ -257,6 +267,32 @@ export default function TaskDetail() {
               </>
             )}
           </div>
+
+          {/* Subtarefas */}
+          {((task as any).subtasks?.length || 0) > 0 && (
+            <div className="card" style={{ marginTop: 16 }}>
+              <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Layers size={14} style={{ color: '#9B59B6' }} /> Subtarefas ({(task as any).subtasks.filter((s: any) => s.stage === 'concluido').length}/{(task as any).subtasks.length})
+              </h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {(task as any).subtasks.map((sub: any) => (
+                  <div key={sub.id} onClick={() => navigate(`/tasks/${sub.id}`)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.04)', cursor: 'pointer', transition: 'all 0.2s' }}>
+                    <span style={{ width: 22, height: 22, borderRadius: '50%', background: sub.stage === 'concluido' ? '#34C759' : 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: sub.stage === 'concluido' ? '#0A0118' : '#6B6580', fontWeight: 700, flexShrink: 0 }}>
+                      {sub.stage === 'concluido' ? '✓' : sub.subtask_position}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: sub.stage === 'concluido' ? '#6B6580' : '#F0EDF5', textDecoration: sub.stage === 'concluido' ? 'line-through' : 'none' }}>{sub.title}</div>
+                      <div style={{ fontSize: 10, color: '#6B6580', display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+                        <span className="stage-badge" style={{ background: `${sub.stage_color}15`, color: sub.stage_color, padding: '1px 8px', borderRadius: 4, fontSize: 9 }}>{sub.stage_name}</span>
+                        {sub.department_name && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: sub.department_color }} />{sub.department_name}</span>}
+                        {sub.assigned_name && <span><User size={9} style={{ marginRight: 2 }} />{sub.assigned_name}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right column — different for client vs team */}
