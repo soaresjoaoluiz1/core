@@ -65,8 +65,6 @@ router.get('/', (req, res) => {
       (SELECT GROUP_CONCAT(u2.name, ', ') FROM task_assignees ta2 JOIN users u2 ON ta2.user_id = u2.id WHERE ta2.task_id = t.id) as assigned_name,
       creator.name as created_by_name,
       (SELECT COUNT(*) FROM task_comments WHERE task_id = t.id) as comment_count,
-      (SELECT COUNT(*) FROM tasks ts WHERE ts.parent_task_id = t.id AND ts.is_active = 1) as subtask_count,
-      (SELECT COUNT(*) FROM tasks ts WHERE ts.parent_task_id = t.id AND ts.is_active = 1 AND ts.stage = 'concluido') as subtask_done_count,
       ps.name as stage_name, ps.color as stage_color
     FROM tasks t
     LEFT JOIN clients c ON t.client_id = c.id
@@ -98,8 +96,6 @@ router.get('/pipeline', (req, res) => {
   const tasks = db.prepare(`
     SELECT t.*, c.name as client_name, d.name as department_name, d.color as department_color,
       (SELECT GROUP_CONCAT(u2.name, ', ') FROM task_assignees ta2 JOIN users u2 ON ta2.user_id = u2.id WHERE ta2.task_id = t.id) as assigned_name,
-      (SELECT COUNT(*) FROM tasks ts WHERE ts.parent_task_id = t.id AND ts.is_active = 1) as subtask_count,
-      (SELECT COUNT(*) FROM tasks ts WHERE ts.parent_task_id = t.id AND ts.is_active = 1 AND ts.stage = 'concluido') as subtask_done_count,
       ps.name as stage_name, ps.color as stage_color
     FROM tasks t
     LEFT JOIN clients c ON t.client_id = c.id LEFT JOIN departments d ON t.department_id = d.id
@@ -152,22 +148,6 @@ router.get('/:id', (req, res) => {
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' })
   task.assignees = getAssignees(task.id)
   if (req.user.role === 'cliente' && task.client_id !== req.user.client_id) return res.status(403).json({ error: 'Forbidden' })
-
-  // Subtasks (children)
-  task.subtasks = db.prepare(`
-    SELECT t.*, ps.name as stage_name, ps.color as stage_color, d.name as department_name, d.color as department_color,
-      (SELECT GROUP_CONCAT(u2.name, ', ') FROM task_assignees ta2 JOIN users u2 ON ta2.user_id = u2.id WHERE ta2.task_id = t.id) as assigned_name
-    FROM tasks t
-    LEFT JOIN pipeline_stages ps ON t.stage = ps.slug
-    LEFT JOIN departments d ON t.department_id = d.id
-    WHERE t.parent_task_id = ? AND t.is_active = 1
-    ORDER BY t.subtask_position
-  `).all(task.id)
-
-  // Parent (if this is a child)
-  if (task.parent_task_id) {
-    task.parent = db.prepare('SELECT id, title, stage FROM tasks WHERE id = ?').get(task.parent_task_id)
-  }
 
   // Comments (filter internal for clients)
   const commentWhere = req.user.role === 'cliente' ? 'AND tc.is_internal = 0' : ''

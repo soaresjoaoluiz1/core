@@ -26,14 +26,10 @@ export interface Task {
   stage: string; title: string; description: string | null; due_date: string | null
   priority: string; assigned_to: number | null; drive_link: string | null; drive_link_raw: string | null
   approval_link: string | null; approval_text: string | null; publish_date: string | null; publish_objective: string | null
-  parent_task_id?: number | null; template_id?: number | null; subtask_position?: number | null
   created_by: number; is_active: number; created_at: string; updated_at: string
   client_name?: string; department_name?: string; department_color?: string
   category_name?: string; category_color?: string; assigned_name?: string
   created_by_name?: string; comment_count?: number; stage_name?: string; stage_color?: string
-  subtask_count?: number; subtask_done_count?: number
-  subtasks?: Task[]; parent?: { id: number; title: string; stage: string }
-  assignees?: { user_id: number; name: string }[]
 }
 
 export interface TaskComment { id: number; task_id: number; user_id: number; content: string; is_internal: number; created_at: string; user_name: string; user_role: string }
@@ -126,20 +122,6 @@ export const updateService = (id: number, data: any) => apiFetch(`/api/services/
 export interface ClientService extends Service { config: Record<string, string> }
 export const fetchClientServices = (clientId: number) => apiFetch<{ services: ClientService[] }>(`/api/clients/${clientId}/services`).then(d => d.services)
 export const updateClientServices = (clientId: number, services: { id: number; config: Record<string, string> }[]) => apiFetch(`/api/clients/${clientId}/services`, { method: 'PUT', body: JSON.stringify({ services }) })
-
-// Task Templates
-export interface TemplateSubtask { name: string; department_id?: number | null }
-export interface TaskTemplate {
-  id: number; service_id: number | null; name: string; color: string
-  subtasks: TemplateSubtask[]; is_active: number
-  service_name?: string; service_color?: string
-}
-export const fetchTemplates = () => apiFetch<{ templates: TaskTemplate[] }>('/api/templates').then(d => d.templates)
-export const createTemplate = (data: { service_id?: number | null; name: string; color?: string; subtasks: TemplateSubtask[] }) => apiFetch<{ template: TaskTemplate }>('/api/templates', { method: 'POST', body: JSON.stringify(data) }).then(d => d.template)
-export const updateTemplate = (id: number, data: any) => apiFetch(`/api/templates/${id}`, { method: 'PUT', body: JSON.stringify(data) })
-export const deleteTemplate = (id: number) => apiFetch(`/api/templates/${id}`, { method: 'DELETE' })
-export const generateFromTemplate = (templateId: number, data: { client_id: number; count: number; name_prefix: string; due_date?: string; priority?: string; category_id?: number | null }) =>
-  apiFetch<{ ok: boolean; created: number; parent_ids: number[] }>(`/api/templates/${templateId}/generate`, { method: 'POST', body: JSON.stringify(data) })
 
 // Financial
 export interface FinancialClient { id: number; name: string; monthly_fee: number; payment_day: number; status: 'paid' | 'pending' | 'late'; paid_at?: string; amount_paid?: number; days_late: number; penalty: number; total_due: number }
