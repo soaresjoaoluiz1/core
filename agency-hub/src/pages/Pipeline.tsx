@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
-import { fetchPipelineTasks, fetchClients, fetchDepartments, fetchUsers, fetchCategories, fetchTemplates, generateFromTemplate, createTask, moveTaskStage, type Task, type PipelineStage, type Client, type Department, type User as UserT, type TaskCategory, type TaskTemplate } from '../lib/api'
-import { Clock, Building2, User, ExternalLink, ChevronDown, ChevronRight, ArrowRight, Search, AlertTriangle, Plus, Layers, GitBranch } from 'lucide-react'
+import { fetchPipelineTasks, fetchClients, fetchDepartments, fetchUsers, fetchCategories, createTask, moveTaskStage, type Task, type PipelineStage, type Client, type Department, type User as UserT, type TaskCategory } from '../lib/api'
+import { Clock, Building2, User, ExternalLink, ChevronDown, ChevronRight, ArrowRight, Search, AlertTriangle, Plus } from 'lucide-react'
 
 function timeAgo(d: string) { const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000); if (m < 60) return `${m}m`; const h = Math.floor(m / 60); if (h < 24) return `${h}h`; return `${Math.floor(h / 24)}d` }
 function todayStr() { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}` }
@@ -28,9 +28,6 @@ export default function Pipeline() {
   const [moveTaskId, setMoveTaskId] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [showTerminal, setShowTerminal] = useState(() => localStorage.getItem('pipeline_show_terminal') === '1')
-  const [templates, setTemplates] = useState<TaskTemplate[]>([])
-  const [showGenModal, setShowGenModal] = useState(false)
-  const [genForm, setGenForm] = useState({ template_id: '', client_id: '', count: '1', name_prefix: '', due_date: '', priority: 'normal', category_id: '' })
   const [categories, setCategories] = useState<TaskCategory[]>([])
   const [showNew, setShowNew] = useState(false)
   const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link_raw: '' })
@@ -49,7 +46,7 @@ export default function Pipeline() {
   }, [filterClient, filterDept, isMobile])
 
   useEffect(() => { loadData() }, [loadData])
-  useEffect(() => { if (isDono || user?.role === 'funcionario') { fetchClients().then(setClients).catch(() => {}); fetchDepartments().then(setDepartments).catch(() => {}); fetchUsers().then(u => setUsers(u as any)).catch(() => {}); fetchCategories().then(setCategories).catch(() => {}); fetchTemplates().then(setTemplates).catch(() => {}) } }, [isDono, user?.role])
+  useEffect(() => { if (isDono || user?.role === 'funcionario') { fetchClients().then(setClients).catch(() => {}); fetchDepartments().then(setDepartments).catch(() => {}); fetchUsers().then(u => setUsers(u as any)).catch(() => {}); fetchCategories().then(setCategories).catch(() => {}) } }, [isDono, user?.role])
   const [allUsers, setUsers] = useState<UserT[]>([])
 
   useSSE('task:created', useCallback(() => loadData(), [loadData]))
@@ -72,23 +69,6 @@ export default function Pipeline() {
     if (!newTask.title || !newTask.client_id) return
     await createTask({ ...newTask, client_id: +newTask.client_id, category_id: newTask.category_id ? +newTask.category_id : undefined, department_id: newTask.department_id ? +newTask.department_id : undefined, assigned_to: newTask.assigned_to.map(Number) } as any)
     setShowNew(false); setNewTask({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [], due_date: '', priority: 'normal', drive_link_raw: '' }); loadData()
-  }
-
-  const handleGenerate = async () => {
-    if (!genForm.template_id || !genForm.client_id || !genForm.name_prefix || !genForm.count) return
-    try {
-      await generateFromTemplate(+genForm.template_id, {
-        client_id: +genForm.client_id,
-        count: +genForm.count,
-        name_prefix: genForm.name_prefix,
-        due_date: genForm.due_date || undefined,
-        priority: genForm.priority,
-        category_id: genForm.category_id ? +genForm.category_id : null,
-      })
-      setShowGenModal(false)
-      setGenForm({ template_id: '', client_id: '', count: '1', name_prefix: '', due_date: '', priority: 'normal', category_id: '' })
-      loadData()
-    } catch (err: any) { alert(err.message || 'Erro ao gerar tarefas') }
   }
 
   const handleMobileMove = async (taskId: number, stageSlug: string) => {
@@ -160,10 +140,7 @@ export default function Pipeline() {
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1>Pipeline</h1>
-          {(isDono || user?.role === 'funcionario') && <>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}><Plus size={14} /> Nova Tarefa</button>
-            {templates.length > 0 && <button className="btn btn-secondary btn-sm" onClick={() => setShowGenModal(true)}><Layers size={14} /> Gerar do Template</button>}
-          </>}
+          {(isDono || user?.role === 'funcionario') && <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}><Plus size={14} /> Nova Tarefa</button>}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative' }}>
@@ -199,16 +176,12 @@ export default function Pipeline() {
                     onClick={() => navigate(`/tasks/${task.id}`)}
                     style={{ borderLeft: `3px solid ${stage.color}` }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div className="kanban-card-name" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {(task as any).parent_task_id && <GitBranch size={10} style={{ color: '#9B59B6', flexShrink: 0 }} />}
-                        {task.title}
-                      </div>
+                      <div className="kanban-card-name">{task.title}</div>
                       {task.priority === 'urgent' && <span style={{ fontSize: 9, background: '#FF6B6B20', color: '#FF6B6B', padding: '1px 6px', borderRadius: 4, fontWeight: 700, flexShrink: 0 }}>URGENTE</span>}
                       {task.priority === 'high' && <span style={{ fontSize: 9, background: '#FFAA8320', color: '#FFAA83', padding: '1px 6px', borderRadius: 4, fontWeight: 700, flexShrink: 0 }}>ALTA</span>}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#A8A3B8', marginBottom: 4 }}>
                       <Building2 size={10} /> {task.client_name}
-                      {((task as any).subtask_count || 0) > 0 && <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, background: 'rgba(155,89,182,0.12)', color: '#9B59B6', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}><Layers size={8} />{(task as any).subtask_done_count || 0}/{(task as any).subtask_count}</span>}
                     </div>
                     {task.department_name && <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#6B6580' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: task.department_color }} />{task.department_name}</div>}
                     <div className="kanban-card-meta">
@@ -249,78 +222,6 @@ export default function Pipeline() {
           <div className="form-group"><label>Link Drive (Arquivo Bruto)</label><input className="input" value={newTask.drive_link_raw} onChange={e => setNewTask(p => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
           <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNew(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreateTask}>Criar Tarefa</button></div>
         </div></div>
-      )}
-
-      {showGenModal && (
-        <div className="modal-overlay" onClick={() => setShowGenModal(false)}>
-          <div className="modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
-            <h2><Layers size={18} style={{ marginRight: 6, verticalAlign: 'middle' }} /> Gerar do Template</h2>
-            <p style={{ color: '#9B96B0', fontSize: 13, marginBottom: 16 }}>Cria varias tarefas de uma vez com subtarefas pre-definidas (ex: 8 posts da linha editorial).</p>
-
-            <div className="form-group">
-              <label>Template *</label>
-              <select className="select" value={genForm.template_id} onChange={e => setGenForm(p => ({ ...p, template_id: e.target.value }))}>
-                <option value="">Selecione</option>
-                {templates.map(t => <option key={t.id} value={t.id}>{t.name} ({t.subtasks.length} etapas{t.service_name ? ` - ${t.service_name}` : ''})</option>)}
-              </select>
-            </div>
-
-            {genForm.template_id && (() => {
-              const tpl = templates.find(t => t.id === +genForm.template_id)
-              if (!tpl) return null
-              return (
-                <div style={{ padding: '8px 12px', background: 'rgba(155,89,182,0.08)', borderRadius: 8, marginBottom: 12, fontSize: 11, color: '#9B96B0' }}>
-                  <strong style={{ color: '#9B59B6' }}>Etapas:</strong> {tpl.subtasks.map((s, i) => `${i+1}. ${s.name}`).join(' · ')}
-                </div>
-              )
-            })()}
-
-            <div className="form-row">
-              <div className="form-group" style={{ flex: 2 }}>
-                <label>Cliente *</label>
-                <select className="select" value={genForm.client_id} onChange={e => setGenForm(p => ({ ...p, client_id: e.target.value }))}>
-                  <option value="">Selecione</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label>Quantidade *</label>
-                <input className="input" type="number" min="1" value={genForm.count} onChange={e => setGenForm(p => ({ ...p, count: e.target.value }))} />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label>Prefixo do nome *</label>
-              <input className="input" value={genForm.name_prefix} onChange={e => setGenForm(p => ({ ...p, name_prefix: e.target.value }))} placeholder="Ex: Post Maio" />
-              <span style={{ fontSize: 11, color: '#6B6580' }}>Vai gerar: "{genForm.name_prefix || 'Post Maio'} 1/{genForm.count}", "{genForm.name_prefix || 'Post Maio'} 2/{genForm.count}", ...</span>
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label>Categoria</label>
-                <select className="select" value={genForm.category_id} onChange={e => setGenForm(p => ({ ...p, category_id: e.target.value }))}>
-                  <option value="">Nenhuma</option>
-                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>Prazo</label>
-                <input className="input" type="date" value={genForm.due_date} onChange={e => setGenForm(p => ({ ...p, due_date: e.target.value }))} />
-              </div>
-              <div className="form-group">
-                <label>Prioridade</label>
-                <select className="select" value={genForm.priority} onChange={e => setGenForm(p => ({ ...p, priority: e.target.value }))}>
-                  <option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="modal-actions">
-              <button className="btn btn-secondary" onClick={() => setShowGenModal(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={handleGenerate}><Layers size={12} /> Gerar {genForm.count} tarefa(s)</button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   )

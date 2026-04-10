@@ -16,7 +16,6 @@ import Categories from './pages/Categories'
 import SettingsPage from './pages/Settings'
 import Notifications from './pages/Notifications'
 import Services from './pages/Services'
-import Templates from './pages/Templates'
 import Financial from './pages/Financial'
 import Onboard from './pages/Onboard'
 import TimerCheck from './components/TimerCheck'
@@ -53,7 +52,6 @@ function AppRoutes() {
               <Route path="/departments" element={<Departments />} />
               <Route path="/categories" element={<Categories />} />
               <Route path="/services" element={<Services />} />
-              <Route path="/templates" element={<Templates />} />
               <Route path="/financial" element={<Financial />} />
               <Route path="/settings" element={<SettingsPage />} />
             </>}
