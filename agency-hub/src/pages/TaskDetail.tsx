@@ -253,20 +253,36 @@ export default function TaskDetail() {
                   <div className="form-group"><label>Link Drive (Arquivo Pronto)</label><input className="input" value={editData.drive_link} onChange={e => setEditData((p: any) => ({ ...p, drive_link: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
                 </div>
                 {/* Editorial workflow special fields */}
-                {(task as any).subtask_kind === 'briefing' && (
-                  <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(255,179,0,0.06)', border: '1px solid rgba(255,179,0,0.2)', borderRadius: 10 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Reuniao de Apresentacao</div>
-                    <div className="form-group"><label>Data e Hora da Reuniao com o Cliente *</label><input className="input" type="datetime-local" value={editData.meeting_datetime} onChange={e => setEditData((p: any) => ({ ...p, meeting_datetime: e.target.value }))} /></div>
-                    <div style={{ fontSize: 10, color: '#6E6887' }}>Obrigatorio preencher antes de concluir o Briefing. Esta data ja vira o prazo da Reuniao Aprovacao Cliente.</div>
-                  </div>
-                )}
-                {(task as any).subtask_kind === 'aprov_briefing' && (
-                  <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(255,179,0,0.06)', border: '1px solid rgba(255,179,0,0.2)', borderRadius: 10 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Marcar Gravacao</div>
-                    <div className="form-group"><label>Data e Hora da Gravacao *</label><input className="input" type="datetime-local" value={editData.recording_datetime} onChange={e => setEditData((p: any) => ({ ...p, recording_datetime: e.target.value }))} /></div>
-                    <div style={{ fontSize: 10, color: '#6E6887' }}>Obrigatorio preencher antes de concluir. Ao concluir, sera criada a tarefa de Gravacao (Ivandro) e Criar Imagens (Design) automaticamente.</div>
-                  </div>
-                )}
+                {(task as any).subtask_kind === 'briefing' && (() => {
+                  const dt = editData.meeting_datetime || ''
+                  const datePart = dt.slice(0, 10)
+                  const timePart = dt.slice(11, 16)
+                  return (
+                    <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(255,179,0,0.06)', border: '1px solid rgba(255,179,0,0.2)', borderRadius: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Reuniao de Apresentacao</div>
+                      <div className="form-row">
+                        <div className="form-group"><label>Data da Reuniao *</label><input className="input" type="date" value={datePart} onChange={e => setEditData((p: any) => ({ ...p, meeting_datetime: e.target.value ? `${e.target.value}T${timePart || '09:00'}` : '' }))} /></div>
+                        <div className="form-group"><label>Hora *</label><input className="input" type="time" value={timePart} onChange={e => setEditData((p: any) => ({ ...p, meeting_datetime: datePart ? `${datePart}T${e.target.value || '09:00'}` : '' }))} /></div>
+                      </div>
+                      <div style={{ fontSize: 10, color: '#6E6887' }}>Obrigatorio preencher antes de concluir o Briefing. Esta data vira o prazo da Reuniao Aprovacao Cliente.</div>
+                    </div>
+                  )
+                })()}
+                {(task as any).subtask_kind === 'aprov_briefing' && (() => {
+                  const dt = editData.recording_datetime || ''
+                  const datePart = dt.slice(0, 10)
+                  const timePart = dt.slice(11, 16)
+                  return (
+                    <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(255,179,0,0.06)', border: '1px solid rgba(255,179,0,0.2)', borderRadius: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Marcar Gravacao</div>
+                      <div className="form-row">
+                        <div className="form-group"><label>Data da Gravacao *</label><input className="input" type="date" value={datePart} onChange={e => setEditData((p: any) => ({ ...p, recording_datetime: e.target.value ? `${e.target.value}T${timePart || '09:00'}` : '' }))} /></div>
+                        <div className="form-group"><label>Hora *</label><input className="input" type="time" value={timePart} onChange={e => setEditData((p: any) => ({ ...p, recording_datetime: datePart ? `${datePart}T${e.target.value || '09:00'}` : '' }))} /></div>
+                      </div>
+                      <div style={{ fontSize: 10, color: '#6E6887' }}>Obrigatorio preencher antes de concluir. Ao concluir, sera criada a tarefa de Gravacao (Ivandro) automaticamente.</div>
+                    </div>
+                  )
+                })()}
 
                 {/* Approval content section */}
                 <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(245,166,35,0.04)', border: '1px solid rgba(245,166,35,0.12)', borderRadius: 10 }}>

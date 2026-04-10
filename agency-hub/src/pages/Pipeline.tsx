@@ -190,6 +190,7 @@ export default function Pipeline() {
               <div className="kanban-cards">
                 {stageTasks.map(task => {
                   const isSubtask = !!(task as any).parent_task_id
+                  const isMother = !isSubtask && !!(task as any).task_type && (task as any).task_type !== 'normal'
                   // For subtasks, strip " - Linha Editorial..." from title for compact display
                   const displayTitle = isSubtask ? task.title.split(' - ')[0] : task.title
                   return (
@@ -197,7 +198,12 @@ export default function Pipeline() {
                   data-subtask={isSubtask ? '1' : undefined}
                     draggable onDragStart={() => setDraggedTask(task.id)} onDragEnd={() => setDraggedTask(null)}
                     onClick={() => navigate(`/tasks/${task.id}`)}
-                    style={{ borderLeft: `3px solid ${stage.color}`, ...(isSubtask ? { background: 'rgba(255,179,0,0.03)' } : {}) }}>
+                    style={{ borderLeft: `3px solid ${stage.color}`, ...(isSubtask ? { background: 'rgba(255,179,0,0.03)' } : isMother ? { background: 'rgba(255,179,0,0.05)' } : {}) }}>
+                    {isMother && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: '#FFB300', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
+                        <Layers size={9} /> Tarefa Mae
+                      </div>
+                    )}
                     {isSubtask && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: '#FFB300', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
                         <Layers size={9} /> Subtarefa
