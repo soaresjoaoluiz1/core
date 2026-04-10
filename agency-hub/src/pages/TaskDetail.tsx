@@ -284,19 +284,17 @@ export default function TaskDetail() {
                   )
                 })()}
 
-                {/* Approval content section — only for normal standalone tasks (not editorial mae/subtarefa) */}
-                {!(task as any).parent_task_id && (!((task as any).task_type) || (task as any).task_type === 'normal') && (
-                  <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(245,166,35,0.04)', border: '1px solid rgba(245,166,35,0.12)', borderRadius: 10 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Conteudo para Aprovacao</div>
-                    <div className="form-group"><label>Link do arquivo finalizado *</label><input className="input" value={editData.approval_link} onChange={e => setEditData((p: any) => ({ ...p, approval_link: e.target.value }))} placeholder="Link do Drive com o arquivo pronto pra aprovacao..." /></div>
-                    <div className="form-group"><label>Texto / Legenda</label><textarea className="input" rows={3} value={editData.approval_text} onChange={e => setEditData((p: any) => ({ ...p, approval_text: e.target.value }))} placeholder="Legenda do post, texto da publicacao, descricao..." /></div>
-                    <div className="form-row">
-                      <div className="form-group"><label>Data da Publicacao</label><input className="input" type="date" value={editData.publish_date} onChange={e => setEditData((p: any) => ({ ...p, publish_date: e.target.value }))} /></div>
-                      <div className="form-group"><label>Objetivo da Publicacao</label><input className="input" value={editData.publish_objective} onChange={e => setEditData((p: any) => ({ ...p, publish_objective: e.target.value }))} placeholder="Ex: Gerar leads, engajamento, branding..." /></div>
-                    </div>
-                    <div style={{ fontSize: 10, color: '#6E6887' }}>Obrigatorio preencher o link antes de enviar pra aprovacao. Data e objetivo sao opcionais.</div>
+                {/* Approval content section */}
+                <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(245,166,35,0.04)', border: '1px solid rgba(245,166,35,0.12)', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Conteudo para Aprovacao</div>
+                  <div className="form-group"><label>Link do arquivo finalizado *</label><input className="input" value={editData.approval_link} onChange={e => setEditData((p: any) => ({ ...p, approval_link: e.target.value }))} placeholder="Link do Drive com o arquivo pronto pra aprovacao..." /></div>
+                  <div className="form-group"><label>Texto / Legenda</label><textarea className="input" rows={3} value={editData.approval_text} onChange={e => setEditData((p: any) => ({ ...p, approval_text: e.target.value }))} placeholder="Legenda do post, texto da publicacao, descricao..." /></div>
+                  <div className="form-row">
+                    <div className="form-group"><label>Data da Publicacao</label><input className="input" type="date" value={editData.publish_date} onChange={e => setEditData((p: any) => ({ ...p, publish_date: e.target.value }))} /></div>
+                    <div className="form-group"><label>Objetivo da Publicacao</label><input className="input" value={editData.publish_objective} onChange={e => setEditData((p: any) => ({ ...p, publish_objective: e.target.value }))} placeholder="Ex: Gerar leads, engajamento, branding..." /></div>
                   </div>
-                )}
+                  <div style={{ fontSize: 10, color: '#6E6887' }}>Obrigatorio preencher o link antes de enviar pra aprovacao. Data e objetivo sao opcionais.</div>
+                </div>
                 <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
                   <button className="btn btn-primary btn-sm" onClick={handleSaveEdit}><Save size={12} /> Salvar</button>
                   <button className="btn btn-secondary btn-sm" onClick={() => setEditing(false)}><X size={12} /> Cancelar</button>

@@ -28,6 +28,8 @@ export default function Pipeline() {
   const [moveTaskId, setMoveTaskId] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [showTerminal, setShowTerminal] = useState(() => localStorage.getItem('pipeline_show_terminal') === '1')
+  const [viewMode, setViewMode] = useState<'all' | 'maes' | 'subtarefas'>(() => (localStorage.getItem('pipeline_view_mode') as any) || 'all')
+  const [groupByClient, setGroupByClient] = useState(() => localStorage.getItem('pipeline_group_client') === '1')
   const [categories, setCategories] = useState<TaskCategory[]>([])
   const [showNew, setShowNew] = useState(false)
   const [showNewEditorial, setShowNewEditorial] = useState(false)
@@ -172,12 +174,31 @@ export default function Pipeline() {
           <button className={`btn btn-sm ${showTerminal ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setShowTerminal(p => { const v = !p; localStorage.setItem('pipeline_show_terminal', v ? '1' : '0'); return v }) }} style={{ fontSize: 11 }}>
             {showTerminal ? 'Ocultar Concluidos' : 'Mostrar Concluidos'}
           </button>
+          <div style={{ display: 'flex', gap: 0, border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, overflow: 'hidden' }}>
+            <button onClick={() => { setViewMode('all'); localStorage.setItem('pipeline_view_mode', 'all') }} style={{ padding: '6px 10px', fontSize: 11, background: viewMode === 'all' ? '#FFB300' : 'transparent', color: viewMode === 'all' ? '#1a1625' : '#9B96B0', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Tudo</button>
+            <button onClick={() => { setViewMode('maes'); localStorage.setItem('pipeline_view_mode', 'maes') }} style={{ padding: '6px 10px', fontSize: 11, background: viewMode === 'maes' ? '#FFB300' : 'transparent', color: viewMode === 'maes' ? '#1a1625' : '#9B96B0', border: 'none', borderLeft: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Tarefas</button>
+            <button onClick={() => { setViewMode('subtarefas'); localStorage.setItem('pipeline_view_mode', 'subtarefas') }} style={{ padding: '6px 10px', fontSize: 11, background: viewMode === 'subtarefas' ? '#FFB300' : 'transparent', color: viewMode === 'subtarefas' ? '#1a1625' : '#9B96B0', border: 'none', borderLeft: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Subtarefas</button>
+          </div>
+          <button className={`btn btn-sm ${groupByClient ? 'btn-primary' : 'btn-secondary'}`} onClick={() => { setGroupByClient(p => { const v = !p; localStorage.setItem('pipeline_group_client', v ? '1' : '0'); return v }) }} style={{ fontSize: 11 }}>
+            {groupByClient ? 'Desagrupar' : 'Agrupar por Cliente'}
+          </button>
         </div>
       </div>
       <div className="kanban-board">
         {stages.filter(s => showTerminal || !s.is_terminal).map(stage => {
           const searchLower = searchQuery.toLowerCase()
-          const stageTasks = tasks.filter(t => t.stage === stage.slug && (!searchQuery || t.title.toLowerCase().includes(searchLower) || t.client_name?.toLowerCase().includes(searchLower) || t.assigned_name?.toLowerCase().includes(searchLower)))
+          const stageTasks = tasks.filter(t => {
+            if (t.stage !== stage.slug) return false
+            // viewMode filter
+            const isSubtask = !!(t as any).parent_task_id
+            const isMother = !isSubtask && !!(t as any).task_type && (t as any).task_type !== 'normal'
+            if (viewMode === 'maes' && isSubtask) return false
+            if (viewMode === 'subtarefas' && !isSubtask && !isMother) return false
+            if (viewMode === 'subtarefas' && isMother) return false
+            // search filter
+            if (searchQuery && !t.title.toLowerCase().includes(searchLower) && !t.client_name?.toLowerCase().includes(searchLower) && !t.assigned_name?.toLowerCase().includes(searchLower)) return false
+            return true
+          })
           return (
             <div key={stage.id} className="kanban-column"
               onDragOver={e => { e.preventDefault(); e.currentTarget.querySelector('.kanban-cards')?.classList.add('drag-over') }}
@@ -188,54 +209,77 @@ export default function Pipeline() {
                 <span className="kanban-column-count">{stageTasks.length}</span>
               </div>
               <div className="kanban-cards">
-                {stageTasks.map(task => {
-                  const isSubtask = !!(task as any).parent_task_id
-                  const isMother = !isSubtask && !!(task as any).task_type && (task as any).task_type !== 'normal'
-                  // For subtasks, strip " - Linha Editorial..." from title for compact display
-                  const displayTitle = isSubtask ? task.title.split(' - ')[0] : task.title
-                  return (
-                  <div key={task.id} className={`kanban-card ${draggedTask === task.id ? 'dragging' : ''}`}
-                  data-subtask={isSubtask ? '1' : undefined}
-                    draggable onDragStart={() => setDraggedTask(task.id)} onDragEnd={() => setDraggedTask(null)}
-                    onClick={() => navigate(`/tasks/${task.id}`)}
-                    style={{ borderLeft: `3px solid ${stage.color}`, ...(isSubtask ? { background: 'rgba(255,179,0,0.03)' } : isMother ? { background: 'rgba(255,179,0,0.05)' } : {}) }}>
-                    {isMother && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: '#FFB300', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
-                        <Layers size={9} /> Tarefa Mae
+                {(() => {
+                  const renderCard = (task: Task) => {
+                    const isSubtask = !!(task as any).parent_task_id
+                    const isMother = !isSubtask && !!(task as any).task_type && (task as any).task_type !== 'normal'
+                    const displayTitle = isSubtask ? task.title.split(' - ')[0] : task.title
+                    return (
+                      <div key={task.id} className={`kanban-card ${draggedTask === task.id ? 'dragging' : ''}`}
+                        data-subtask={isSubtask ? '1' : undefined}
+                        draggable onDragStart={() => setDraggedTask(task.id)} onDragEnd={() => setDraggedTask(null)}
+                        onClick={() => navigate(`/tasks/${task.id}`)}
+                        style={{ borderLeft: `3px solid ${stage.color}`, ...(isSubtask ? { background: 'rgba(255,179,0,0.03)' } : isMother ? { background: 'rgba(255,179,0,0.05)' } : {}) }}>
+                        {isMother && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: '#FFB300', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
+                            <Layers size={9} /> Tarefa Mae
+                          </div>
+                        )}
+                        {isSubtask && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: '#FFB300', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
+                            <Layers size={9} /> Subtarefa
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div className="kanban-card-name">{displayTitle}</div>
+                          {task.priority === 'urgent' && <span style={{ fontSize: 9, background: '#FF6B6B20', color: '#FF6B6B', padding: '1px 6px', borderRadius: 4, fontWeight: 700, flexShrink: 0 }}>URGENTE</span>}
+                          {task.priority === 'high' && <span style={{ fontSize: 9, background: '#FFAA8320', color: '#FFAA83', padding: '1px 6px', borderRadius: 4, fontWeight: 700, flexShrink: 0 }}>ALTA</span>}
+                        </div>
+                        {!groupByClient && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#A8A3B8', marginBottom: 4 }}>
+                            <Building2 size={10} /> {task.client_name}
+                          </div>
+                        )}
+                        {task.department_name && <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#6B6580' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: task.department_color }} />{task.department_name}</div>}
+                        <div className="kanban-card-meta">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            {task.assigned_name && <span><User size={10} /> {task.assigned_name}</span>}
+                            {(() => { const days = Math.floor((Date.now() - new Date(task.updated_at).getTime()) / 86400000); return days > 0 ? <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, background: days > 7 ? '#FF6B6B15' : days > 3 ? '#FBBC0415' : 'rgba(255,255,255,0.04)', color: days > 7 ? '#FF6B6B' : days > 3 ? '#FBBC04' : '#6B6580' }}>{days}d</span> : null })()}
+                          </div>
+                          {task.due_date && <span style={{ color: isOverdue(task.due_date) ? '#FF6B6B' : '#6B6580', fontWeight: isOverdue(task.due_date) ? 700 : 400, display: 'flex', alignItems: 'center', gap: 3 }}>{isOverdue(task.due_date) && <AlertTriangle size={9} />}<Clock size={10} />{task.due_date.slice(5, 10)}</span>}
+                        </div>
+                        {!!(task as any).subtask_count && (
+                          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#9B96B0' }}>
+                            <Layers size={10} style={{ color: '#FFB300' }} />
+                            <span>{(task as any).subtask_done_count || 0}/{(task as any).subtask_count} subtarefas</span>
+                          </div>
+                        )}
+                        {task.drive_link && <div style={{ marginTop: 4 }}><ExternalLink size={10} style={{ color: '#5DADE2' }} /></div>}
                       </div>
-                    )}
-                    {isSubtask && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: '#FFB300', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
-                        <Layers size={9} /> Subtarefa
+                    )
+                  }
+
+                  if (!groupByClient) return stageTasks.map(renderCard)
+
+                  // Group by client
+                  const groups: Record<string, Task[]> = {}
+                  for (const t of stageTasks) {
+                    const key = t.client_name || 'Sem cliente'
+                    if (!groups[key]) groups[key] = []
+                    groups[key].push(t)
+                  }
+                  const sortedKeys = Object.keys(groups).sort()
+                  return sortedKeys.map(clientName => (
+                    <div key={clientName} style={{ marginBottom: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', marginBottom: 6, fontSize: 10, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid rgba(255,179,0,0.2)' }}>
+                        <Building2 size={10} /> {clientName} <span style={{ color: '#6B6580' }}>({groups[clientName].length})</span>
                       </div>
-                    )}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div className="kanban-card-name">{displayTitle}</div>
-                      {task.priority === 'urgent' && <span style={{ fontSize: 9, background: '#FF6B6B20', color: '#FF6B6B', padding: '1px 6px', borderRadius: 4, fontWeight: 700, flexShrink: 0 }}>URGENTE</span>}
-                      {task.priority === 'high' && <span style={{ fontSize: 9, background: '#FFAA8320', color: '#FFAA83', padding: '1px 6px', borderRadius: 4, fontWeight: 700, flexShrink: 0 }}>ALTA</span>}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {groups[clientName].map(renderCard)}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#A8A3B8', marginBottom: 4 }}>
-                      <Building2 size={10} /> {task.client_name}
-                    </div>
-                    {task.department_name && <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#6B6580' }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: task.department_color }} />{task.department_name}</div>}
-                    <div className="kanban-card-meta">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {task.assigned_name && <span><User size={10} /> {task.assigned_name}</span>}
-                        {/* Days in stage */}
-                        {(() => { const days = Math.floor((Date.now() - new Date(task.updated_at).getTime()) / 86400000); return days > 0 ? <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, background: days > 7 ? '#FF6B6B15' : days > 3 ? '#FBBC0415' : 'rgba(255,255,255,0.04)', color: days > 7 ? '#FF6B6B' : days > 3 ? '#FBBC04' : '#6B6580' }}>{days}d</span> : null })()}
-                      </div>
-                      {task.due_date && <span style={{ color: isOverdue(task.due_date) ? '#FF6B6B' : '#6B6580', fontWeight: isOverdue(task.due_date) ? 700 : 400, display: 'flex', alignItems: 'center', gap: 3 }}>{isOverdue(task.due_date) && <AlertTriangle size={9} />}<Clock size={10} />{task.due_date.slice(5, 10)}</span>}
-                    </div>
-                    {!!(task as any).subtask_count && (
-                      <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#9B96B0' }}>
-                        <Layers size={10} style={{ color: '#FFB300' }} />
-                        <span>{(task as any).subtask_done_count || 0}/{(task as any).subtask_count} subtarefas</span>
-                      </div>
-                    )}
-                    {task.drive_link && <div style={{ marginTop: 4 }}><ExternalLink size={10} style={{ color: '#5DADE2' }} /></div>}
-                  </div>
-                  )
-                })}
+                  ))
+                })()}
               </div>
             </div>
           )
