@@ -21,10 +21,9 @@ router.get('/', requireRole('dono', 'funcionario'), (req, res) => {
   res.json({ users })
 })
 
-router.post('/', requireRole('dono', 'gerente'), (req, res) => {
+router.post('/', requireRole('dono'), (req, res) => {
   const { name, email, password, role, client_id } = req.body
   if (!name || !email || !password || !role) return res.status(400).json({ error: 'Campos obrigatorios: name, email, password, role' })
-  if (req.user.role === 'gerente' && role === 'dono') return res.status(403).json({ error: 'Gerente nao pode criar dono' })
   if (db.prepare('SELECT id FROM users WHERE email = ?').get(email)) return res.status(400).json({ error: 'Email ja cadastrado' })
   const cid = role === 'cliente' ? (client_id || null) : null
   const result = db.prepare('INSERT INTO users (name, email, password, role, client_id) VALUES (?, ?, ?, ?, ?)').run(name, email, bcrypt.hashSync(password, 10), role, cid)
@@ -32,7 +31,7 @@ router.post('/', requireRole('dono', 'gerente'), (req, res) => {
   res.json({ user })
 })
 
-router.put('/:id', requireRole('dono', 'gerente'), (req, res) => {
+router.put('/:id', requireRole('dono'), (req, res) => {
   const { name, is_active, password, client_id } = req.body
   const sets = []; const params = []
   if (name !== undefined) { sets.push('name = ?'); params.push(name) }
@@ -46,7 +45,7 @@ router.put('/:id', requireRole('dono', 'gerente'), (req, res) => {
 })
 
 // Set departments for a user
-router.put('/:id/departments', requireRole('dono', 'gerente'), (req, res) => {
+router.put('/:id/departments', requireRole('dono'), (req, res) => {
   const { department_ids } = req.body
   if (!Array.isArray(department_ids)) return res.status(400).json({ error: 'department_ids array required' })
   db.prepare('DELETE FROM user_departments WHERE user_id = ?').run(req.params.id)
@@ -55,7 +54,7 @@ router.put('/:id/departments', requireRole('dono', 'gerente'), (req, res) => {
   res.json({ ok: true })
 })
 
-router.delete('/:id', requireRole('dono', 'gerente'), (req, res) => {
+router.delete('/:id', requireRole('dono'), (req, res) => {
   db.prepare('UPDATE users SET is_active = 0 WHERE id = ?').run(req.params.id)
   res.json({ ok: true })
 })

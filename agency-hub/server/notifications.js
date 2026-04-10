@@ -14,7 +14,7 @@ export function notifyMany(userIds, type, title, message, taskId, triggeredBy) {
 }
 
 export function getDonoUsers() {
-  return db.prepare("SELECT id FROM users WHERE role IN ('dono', 'gerente') AND is_active = 1").all()
+  return db.prepare("SELECT id FROM users WHERE role = 'dono' AND is_active = 1").all()
 }
 
 export function getClientUsers(clientId) {

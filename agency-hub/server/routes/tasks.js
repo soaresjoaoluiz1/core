@@ -33,12 +33,9 @@ function canTransition(role, fromStage, toStage) {
 
 // List tasks with filters
 router.get('/', (req, res) => {
-  const { client_id, department_id, stage, assigned_to, category_id, priority, search, date_from, date_to, page = '1', limit = '30', include_subtasks } = req.query
+  const { client_id, department_id, stage, assigned_to, category_id, priority, search, date_from, date_to, page = '1', limit = '30' } = req.query
   const where = ['t.is_active = 1']
   const params = []
-
-  // By default hide subtasks in list
-  if (include_subtasks !== '1') where.push('t.parent_task_id IS NULL')
 
   // Role-based scoping
   if (req.user.role === 'cliente') {
@@ -68,8 +65,6 @@ router.get('/', (req, res) => {
       (SELECT GROUP_CONCAT(u2.name, ', ') FROM task_assignees ta2 JOIN users u2 ON ta2.user_id = u2.id WHERE ta2.task_id = t.id) as assigned_name,
       creator.name as created_by_name,
       (SELECT COUNT(*) FROM task_comments WHERE task_id = t.id) as comment_count,
-      (SELECT COUNT(*) FROM tasks ts WHERE ts.parent_task_id = t.id AND ts.is_active = 1) as subtask_count,
-      (SELECT COUNT(*) FROM tasks ts WHERE ts.parent_task_id = t.id AND ts.is_active = 1 AND ts.stage = 'concluido') as subtask_done_count,
       ps.name as stage_name, ps.color as stage_color
     FROM tasks t
     LEFT JOIN clients c ON t.client_id = c.id
@@ -87,12 +82,9 @@ router.get('/', (req, res) => {
 
 // Pipeline view (grouped by stage)
 router.get('/pipeline', (req, res) => {
-  const { client_id, department_id, assigned_to, include_subtasks } = req.query
+  const { client_id, department_id, assigned_to } = req.query
   const where = ['t.is_active = 1']
   const params = []
-
-  // By default, only show parent tasks and standalone tasks (hide subtasks)
-  if (include_subtasks !== '1') where.push('t.parent_task_id IS NULL')
 
   if (req.user.role === 'cliente') { where.push('t.client_id = ?'); params.push(req.user.client_id) }
   else if (req.user.role === 'funcionario') { where.push('(t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?) OR t.department_id IN (SELECT department_id FROM user_departments WHERE user_id = ?))'); params.push(req.user.id, req.user.id) }
@@ -104,8 +96,6 @@ router.get('/pipeline', (req, res) => {
   const tasks = db.prepare(`
     SELECT t.*, c.name as client_name, d.name as department_name, d.color as department_color,
       (SELECT GROUP_CONCAT(u2.name, ', ') FROM task_assignees ta2 JOIN users u2 ON ta2.user_id = u2.id WHERE ta2.task_id = t.id) as assigned_name,
-      (SELECT COUNT(*) FROM tasks ts WHERE ts.parent_task_id = t.id AND ts.is_active = 1) as subtask_count,
-      (SELECT COUNT(*) FROM tasks ts WHERE ts.parent_task_id = t.id AND ts.is_active = 1 AND ts.stage = 'concluido') as subtask_done_count,
       ps.name as stage_name, ps.color as stage_color
     FROM tasks t
     LEFT JOIN clients c ON t.client_id = c.id LEFT JOIN departments d ON t.department_id = d.id
@@ -118,7 +108,7 @@ router.get('/pipeline', (req, res) => {
 })
 
 // Create task
-router.post('/', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
+router.post('/', requireRole('dono', 'funcionario'), (req, res) => {
   const { client_id, title, description, category_id, department_id, assigned_to, due_date, priority, drive_link } = req.body
   if (!client_id || !title) return res.status(400).json({ error: 'client_id e title obrigatorios' })
 
@@ -143,62 +133,6 @@ router.post('/', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
   res.json({ task })
 })
 
-// Create Editorial parent task with fixed subtasks (hardcoded workflow)
-router.post('/editorial', requireRole('dono', 'gerente'), (req, res) => {
-  const { client_id, month_label, num_posts, num_videos, due_date, category_id } = req.body
-  if (!client_id || !month_label) return res.status(400).json({ error: 'client_id e month_label obrigatorios' })
-
-  const client = db.prepare('SELECT name FROM clients WHERE id = ?').get(client_id)
-  if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' })
-
-  // Find "Social Media" department id
-  const socialDept = db.prepare("SELECT id FROM departments WHERE name LIKE '%Social%' AND is_active = 1").get()
-  const socialId = socialDept?.id || null
-
-  const parentTitle = `Linha Editorial ${month_label} - ${client.name}`
-  const createTask = db.prepare(`
-    INSERT INTO tasks (client_id, category_id, department_id, title, description, priority, due_date, created_by, stage, task_type, parent_task_id, subtask_position, num_posts, num_videos)
-    VALUES (?, ?, ?, ?, ?, 'normal', ?, ?, 'backlog', ?, ?, ?, ?, ?)
-  `)
-  const histStmt = db.prepare('INSERT INTO task_history (task_id, to_stage, user_id) VALUES (?, ?, ?)')
-
-  const tx = db.transaction(() => {
-    // Parent
-    const parentResult = createTask.run(
-      client_id, category_id || null, null, parentTitle,
-      `Linha editorial com ${num_posts || 0} posts e ${num_videos || 0} videos`,
-      due_date || null, req.user.id, 'mae_editorial', null, null,
-      num_posts || 0, num_videos || 0
-    )
-    const parentId = parentResult.lastInsertRowid
-    histStmt.run(parentId, 'backlog', req.user.id)
-
-    // Fixed subtasks
-    const subs = [
-      { title: 'Briefing (Ideias + Copies)', dept: socialId, pos: 1 },
-      { title: 'Aprovacao Cliente (Briefing)', dept: null, pos: 2 },
-      { title: 'Aprovacao Interna Final', dept: null, pos: 3 },
-      { title: 'Aprovacao Cliente (Final)', dept: null, pos: 4 },
-      { title: 'Publicacao', dept: socialId, pos: 5 },
-    ]
-    subs.forEach(s => {
-      const r = createTask.run(
-        client_id, category_id || null, s.dept,
-        `${parentTitle} - ${s.title}`, null,
-        due_date || null, req.user.id, 'normal', parentId, s.pos, null, null
-      )
-      histStmt.run(r.lastInsertRowid, 'backlog', req.user.id)
-    })
-
-    return parentId
-  })
-
-  const parentId = tx()
-  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(parentId)
-  broadcastSSE(task.client_id, 'task:created', task)
-  res.json({ task, parent_id: parentId })
-})
-
 // Get task detail
 router.get('/:id', (req, res) => {
   const task = db.prepare(`
@@ -214,38 +148,6 @@ router.get('/:id', (req, res) => {
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' })
   task.assignees = getAssignees(task.id)
   if (req.user.role === 'cliente' && task.client_id !== req.user.client_id) return res.status(403).json({ error: 'Forbidden' })
-
-  // Subtasks (children) — full data for inline display
-  task.subtasks = db.prepare(`
-    SELECT t.*, ps.name as stage_name, ps.color as stage_color, d.name as department_name, d.color as department_color,
-      (SELECT GROUP_CONCAT(u2.name, ', ') FROM task_assignees ta2 JOIN users u2 ON ta2.user_id = u2.id WHERE ta2.task_id = t.id) as assigned_name,
-      (SELECT COUNT(*) FROM task_comments WHERE task_id = t.id) as comment_count
-    FROM tasks t
-    LEFT JOIN pipeline_stages ps ON t.stage = ps.slug
-    LEFT JOIN departments d ON t.department_id = d.id
-    WHERE t.parent_task_id = ? AND t.is_active = 1
-    ORDER BY t.subtask_position
-  `).all(task.id)
-  for (const sub of task.subtasks) sub.assignees = getAssignees(sub.id)
-
-  // Parent (if this is a subtask) — full data
-  if (task.parent_task_id) {
-    task.parent = db.prepare(`
-      SELECT t.*, c.name as client_name, ps.name as stage_name, ps.color as stage_color,
-        (SELECT GROUP_CONCAT(u2.name, ', ') FROM task_assignees ta2 JOIN users u2 ON ta2.user_id = u2.id WHERE ta2.task_id = t.id) as assigned_name
-      FROM tasks t
-      LEFT JOIN clients c ON t.client_id = c.id
-      LEFT JOIN pipeline_stages ps ON t.stage = ps.slug
-      WHERE t.id = ?
-    `).get(task.parent_task_id)
-    if (task.parent) {
-      task.parent.subtasks = db.prepare(`
-        SELECT t.id, t.title, t.stage, t.subtask_position, ps.name as stage_name, ps.color as stage_color
-        FROM tasks t LEFT JOIN pipeline_stages ps ON t.stage = ps.slug
-        WHERE t.parent_task_id = ? AND t.is_active = 1 ORDER BY t.subtask_position
-      `).all(task.parent_task_id)
-    }
-  }
 
   // Comments (filter internal for clients)
   const commentWhere = req.user.role === 'cliente' ? 'AND tc.is_internal = 0' : ''
@@ -263,7 +165,7 @@ router.get('/:id', (req, res) => {
 })
 
 // Update task
-router.put('/:id', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
+router.put('/:id', requireRole('dono', 'funcionario'), (req, res) => {
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id)
   if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' })
   // Funcionario can edit if they are one of the assignees
@@ -388,7 +290,7 @@ router.post('/:id/comments', (req, res) => {
 })
 
 // Add attachment
-router.post('/:id/attachments', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
+router.post('/:id/attachments', requireRole('dono', 'funcionario'), (req, res) => {
   const { url, filename, type } = req.body
   if (!url || !filename) return res.status(400).json({ error: 'url e filename obrigatorios' })
   const result = db.prepare('INSERT INTO task_attachments (task_id, url, filename, type, uploaded_by) VALUES (?, ?, ?, ?, ?)').run(req.params.id, url, filename, type || 'file', req.user.id)
@@ -424,7 +326,7 @@ router.post('/:id/time/stop', (req, res) => {
 })
 
 // Bulk operations
-router.post('/bulk/stage', requireRole('dono', 'gerente'), (req, res) => {
+router.post('/bulk/stage', requireRole('dono'), (req, res) => {
   const { task_ids, stage } = req.body
   if (!task_ids?.length || !stage) return res.status(400).json({ error: 'task_ids and stage required' })
   const stmtUpdate = db.prepare("UPDATE tasks SET stage = ?, updated_at = datetime('now', '-3 hours') WHERE id = ?")
@@ -434,7 +336,7 @@ router.post('/bulk/stage', requireRole('dono', 'gerente'), (req, res) => {
   res.json({ ok: true, count: task_ids.length })
 })
 
-router.post('/bulk/assign', requireRole('dono', 'gerente'), (req, res) => {
+router.post('/bulk/assign', requireRole('dono'), (req, res) => {
   const { task_ids, assigned_to } = req.body
   if (!task_ids?.length) return res.status(400).json({ error: 'task_ids required' })
   const stmt = db.prepare("UPDATE tasks SET assigned_to = ?, updated_at = datetime('now', '-3 hours') WHERE id = ?")
@@ -444,7 +346,7 @@ router.post('/bulk/assign', requireRole('dono', 'gerente'), (req, res) => {
 })
 
 // CSV export
-router.get('/export', requireRole('dono', 'gerente'), (req, res) => {
+router.get('/export', requireRole('dono'), (req, res) => {
   const { client_id, stage, department_id, date_from, date_to } = req.query
   const where = ['t.is_active = 1']; const params = []
   if (client_id) { where.push('t.client_id = ?'); params.push(client_id) }

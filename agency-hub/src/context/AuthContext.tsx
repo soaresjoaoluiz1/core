@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 
 export interface User {
   id: number; email: string; name: string
-  role: 'dono' | 'gerente' | 'funcionario' | 'cliente'
+  role: 'dono' | 'funcionario' | 'cliente'
   client_id: number | null
 }
 
