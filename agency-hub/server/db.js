@@ -32,7 +32,7 @@ db.exec(`
     name        TEXT NOT NULL,
     email       TEXT NOT NULL UNIQUE,
     password    TEXT NOT NULL,
-    role        TEXT NOT NULL CHECK (role IN ('dono', 'funcionario', 'cliente')),
+    role        TEXT NOT NULL CHECK (role IN ('dono', 'gerente', 'funcionario', 'cliente')),
     avatar_url  TEXT,
     is_active   INTEGER NOT NULL DEFAULT 1,
     created_at  TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
@@ -305,6 +305,45 @@ try { db.exec("ALTER TABLE client_services ADD COLUMN config TEXT DEFAULT '{}'")
 try { db.exec("ALTER TABLE services ADD COLUMN fields TEXT DEFAULT '[]'") } catch {}
 try { db.exec("ALTER TABLE clients ADD COLUMN monthly_fee REAL DEFAULT 0") } catch {}
 try { db.exec("ALTER TABLE clients ADD COLUMN payment_day INTEGER DEFAULT 10") } catch {}
+// Editorial/Anuncios task-mae support (hardcoded workflows)
+try { db.exec("ALTER TABLE tasks ADD COLUMN task_type TEXT DEFAULT 'normal'") } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN num_posts INTEGER") } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN num_videos INTEGER") } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN recording_datetime TEXT") } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN briefing_content TEXT") } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN parent_task_id INTEGER") } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN subtask_position INTEGER") } catch {}
+try { db.exec("CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_task_id)") } catch {}
+
+// Migrate users.role CHECK to include 'gerente' (SQLite requires table rebuild)
+try {
+  const tbl = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get()
+  if (tbl && tbl.sql.includes("'dono', 'funcionario', 'cliente'") && !tbl.sql.includes('gerente')) {
+    db.exec(`
+      PRAGMA foreign_keys=OFF;
+      BEGIN TRANSACTION;
+      CREATE TABLE users_new (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        client_id   INTEGER,
+        name        TEXT NOT NULL,
+        email       TEXT NOT NULL UNIQUE,
+        password    TEXT NOT NULL,
+        role        TEXT NOT NULL CHECK (role IN ('dono', 'gerente', 'funcionario', 'cliente')),
+        avatar_url  TEXT,
+        is_active   INTEGER NOT NULL DEFAULT 1,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
+        updated_at  TEXT NOT NULL DEFAULT (datetime('now', '-3 hours')),
+        FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE SET NULL
+      );
+      INSERT INTO users_new SELECT * FROM users;
+      DROP TABLE users;
+      ALTER TABLE users_new RENAME TO users;
+      COMMIT;
+      PRAGMA foreign_keys=ON;
+    `)
+    console.log('[DB] Migrated users.role to include gerente')
+  }
+} catch (e) { console.error('[DB] Role migration failed:', e.message) }
 
 // Payments table
 db.exec(`
