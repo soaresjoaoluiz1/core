@@ -200,10 +200,15 @@ router.post('/editorial', requireRole('dono', 'gerente'), (req, res) => {
       {
         title: 'Briefing (Ideias + Copies)',
         dept: socialId, pos: 1, kind: 'briefing',
-        description: 'Criar um documento no Docs com Briefing completo do conteudo + Ideias/Referencias + Copy/roteiro de todos os conteudos e anexar para aprovacao.',
+        description: 'Criar um documento no Docs com Briefing completo do conteudo + Ideias/Referencias + Copy/roteiro de todos os conteudos e anexar para aprovacao.\n\nAo concluir, e obrigatorio informar a Data e Hora da Reuniao de Apresentacao.',
         assigned: ivandroId,
       },
-      { title: 'Aprovacao Cliente (Briefing)', dept: null, pos: 2, kind: 'aprov_briefing', description: null, assigned: null },
+      {
+        title: 'Reuniao Aprovacao Cliente (Briefing)',
+        dept: socialId, pos: 2, kind: 'aprov_briefing',
+        description: 'Apresentar Briefing, ideias e copys/roteiros para o cliente em reuniao e pedir aprovacao do mesmo.\n\nAo concluir, e obrigatorio informar a Data e Hora da Gravacao para criar as tarefas de producao automaticamente.',
+        assigned: null,
+      },
       { title: 'Aprovacao Interna Final', dept: null, pos: 7, kind: 'aprov_interna_final', description: null, assigned: null },
       { title: 'Aprovacao Cliente (Final)', dept: null, pos: 8, kind: 'aprov_cliente_final', description: null, assigned: null },
       { title: 'Publicacao', dept: socialId, pos: 9, kind: 'publicacao', description: null, assigned: null },
@@ -366,7 +371,7 @@ router.put('/:id', requireRole('dono', 'gerente', 'funcionario'), (req, res) => 
     if (!isAssignee && task.assigned_to !== req.user.id) return res.status(403).json({ error: 'Sem permissao' })
   }
 
-  const { title, description, due_date, priority, department_id, assigned_to, drive_link, drive_link_raw, category_id, approval_link, approval_text, publish_date, publish_objective } = req.body
+  const { title, description, due_date, priority, department_id, assigned_to, drive_link, drive_link_raw, category_id, approval_link, approval_text, publish_date, publish_objective, meeting_datetime, recording_datetime } = req.body
   const sets = []; const params = []
   if (title !== undefined) { sets.push('title = ?'); params.push(title) }
   if (description !== undefined) { sets.push('description = ?'); params.push(description) }
@@ -380,6 +385,8 @@ router.put('/:id', requireRole('dono', 'gerente', 'funcionario'), (req, res) => 
   if (approval_text !== undefined) { sets.push('approval_text = ?'); params.push(approval_text) }
   if (publish_date !== undefined) { sets.push('publish_date = ?'); params.push(publish_date) }
   if (publish_objective !== undefined) { sets.push('publish_objective = ?'); params.push(publish_objective) }
+  if (meeting_datetime !== undefined) { sets.push('meeting_datetime = ?'); params.push(meeting_datetime) }
+  if (recording_datetime !== undefined) { sets.push('recording_datetime = ?'); params.push(recording_datetime) }
 
   // Handle multi-assignee
   if (assigned_to !== undefined) {
@@ -423,6 +430,15 @@ router.put('/:id/stage', (req, res) => {
   // Require approval_link for approval stages
   if ((stage === 'aprovacao_interna' || stage === 'aguardando_cliente') && !task.approval_link) {
     return res.status(400).json({ error: 'Preencha o conteudo de aprovacao (link + texto) antes de enviar pra aprovacao' })
+  }
+
+  // Editorial workflow: Briefing -> concluido requires meeting_datetime
+  if (stage === 'concluido' && task.subtask_kind === 'briefing' && !task.meeting_datetime) {
+    return res.status(400).json({ error: 'Preencha a Data e Hora da Reuniao de Apresentacao antes de concluir o Briefing.' })
+  }
+  // Editorial workflow: Reuniao Aprovacao Cliente Briefing -> concluido requires recording_datetime
+  if (stage === 'concluido' && task.subtask_kind === 'aprov_briefing' && !task.recording_datetime) {
+    return res.status(400).json({ error: 'Preencha a Data e Hora da Gravacao antes de concluir esta etapa.' })
   }
 
   db.prepare("UPDATE tasks SET stage = ?, updated_at = datetime('now', '-3 hours') WHERE id = ?").run(stage, task.id)
@@ -472,10 +488,52 @@ function triggerEditorialWorkflow(completedTask, userId) {
   if (!parent || parent.task_type !== 'mae_editorial') return
 
   const insertTask = db.prepare(`
-    INSERT INTO tasks (client_id, category_id, department_id, title, description, priority, due_date, created_by, stage, task_type, parent_task_id, subtask_position, subtask_kind, assigned_to)
-    VALUES (?, ?, ?, ?, ?, 'normal', ?, ?, 'backlog', 'normal', ?, ?, ?, ?)
+    INSERT INTO tasks (client_id, category_id, department_id, title, description, priority, due_date, created_by, stage, task_type, parent_task_id, subtask_position, subtask_kind, assigned_to, recording_datetime)
+    VALUES (?, ?, ?, ?, ?, 'normal', ?, ?, 'backlog', 'normal', ?, ?, ?, ?, ?)
   `)
   const histStmt = db.prepare('INSERT INTO task_history (task_id, to_stage, user_id) VALUES (?, ?, ?)')
+
+  // Briefing -> propagate meeting_datetime to Reuniao subtask's due_date
+  if (completedTask.subtask_kind === 'briefing' && completedTask.meeting_datetime) {
+    const meetingDate = completedTask.meeting_datetime.slice(0, 10)
+    db.prepare("UPDATE tasks SET due_date = ?, meeting_datetime = ?, updated_at = datetime('now', '-3 hours') WHERE parent_task_id = ? AND subtask_kind = 'aprov_briefing'")
+      .run(meetingDate, completedTask.meeting_datetime, parent.id)
+  }
+
+  // Reuniao Aprovacao Cliente Briefing concluida -> cria Gravacao + Criar Imagens automaticamente
+  if (completedTask.subtask_kind === 'aprov_briefing' && completedTask.recording_datetime) {
+    const exists = db.prepare("SELECT id FROM tasks WHERE parent_task_id = ? AND subtask_kind = 'gravacao'").get(parent.id)
+    if (!exists) {
+      // Save recording_datetime on parent for reference
+      db.prepare("UPDATE tasks SET recording_datetime = ?, updated_at = datetime('now', '-3 hours') WHERE id = ?")
+        .run(completedTask.recording_datetime, parent.id)
+
+      const captacaoDept = db.prepare("SELECT id FROM departments WHERE (name LIKE '%Capt%' OR name LIKE '%Video%' OR name LIKE '%Producao%') AND is_active = 1").get()
+      const designDept = db.prepare("SELECT id FROM departments WHERE name LIKE '%Design%' AND is_active = 1").get()
+      const ivandro = db.prepare("SELECT id FROM users WHERE name LIKE '%Ivandro%' AND is_active = 1").get()
+      const recordingDate = completedTask.recording_datetime.slice(0, 10)
+
+      // Gravacao - Ivandro, prazo no dia da gravacao
+      const gravR = insertTask.run(parent.client_id, parent.category_id, captacaoDept?.id || null,
+        `Gravacao - ${parent.title}`,
+        `Gravar todo o conteudo do mes em ${recordingDate}.\n\nApos concluir, criar a tarefa Subir Arquivos automaticamente.`,
+        recordingDate, userId, parent.id, 3, 'gravacao', ivandro?.id || null, completedTask.recording_datetime)
+      histStmt.run(gravR.lastInsertRowid, 'backlog', userId)
+      if (ivandro?.id) {
+        db.prepare('INSERT OR IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)').run(gravR.lastInsertRowid, ivandro.id)
+        notify(ivandro.id, 'task_assigned', 'Nova tarefa de gravacao', `"${parent.title}" - Gravacao em ${recordingDate}`, gravR.lastInsertRowid, userId)
+      }
+
+      // Criar Imagens - Design, em paralelo
+      const imgR = insertTask.run(parent.client_id, parent.category_id, designDept?.id || null,
+        `Criar Imagens - ${parent.title}`,
+        `Criar ${parent.num_posts || 0} imagens para os posts da linha editorial.`,
+        parent.due_date || null, userId, parent.id, 6, 'criar_imagens', null, null)
+      histStmt.run(imgR.lastInsertRowid, 'backlog', userId)
+
+      broadcastSSE(parent.client_id, 'task:created', { parent_id: parent.id })
+    }
+  }
 
   // Gravacao -> Subir Arquivos
   if (completedTask.subtask_kind === 'gravacao') {
@@ -485,12 +543,12 @@ function triggerEditorialWorkflow(completedTask, userId) {
       // Same person who did the recording does the upload
       const captureUser = completedTask.assigned_to
       const r = insertTask.run(parent.client_id, parent.category_id, captacaoDept?.id || null,
-        `${parent.title} - Subir Arquivos`, 'Subir arquivos brutos pro Drive pra edicao',
-        null, userId, parent.id, 4, 'subir_arquivos', captureUser || null)
+        `Subir Arquivos - ${parent.title}`, 'Subir arquivos brutos pro Drive pra edicao',
+        null, userId, parent.id, 4, 'subir_arquivos', captureUser || null, null)
       histStmt.run(r.lastInsertRowid, 'backlog', userId)
       if (captureUser) {
         db.prepare('INSERT OR IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)').run(r.lastInsertRowid, captureUser)
-        notify(captureUser, 'task_assigned', 'Subir arquivos da gravacao', `"${parent.title} - Subir Arquivos"`, r.lastInsertRowid, userId)
+        notify(captureUser, 'task_assigned', 'Subir arquivos da gravacao', `"Subir Arquivos - ${parent.title}"`, r.lastInsertRowid, userId)
       }
       broadcastSSE(parent.client_id, 'task:created', { parent_id: parent.id })
     }
@@ -505,12 +563,12 @@ function triggerEditorialWorkflow(completedTask, userId) {
       let editUser = null
       try { editUser = JSON.parse(parent.briefing_content || '{}').edit_user_id } catch {}
       const r = insertTask.run(parent.client_id, parent.category_id, edicaoDept?.id || null,
-        `${parent.title} - Editar Video`, `Editar ${parent.num_videos || 0} videos`,
-        parent.due_date || null, userId, parent.id, 5, 'editar_video', editUser || null)
+        `Editar Video - ${parent.title}`, `Editar ${parent.num_videos || 0} videos`,
+        parent.due_date || null, userId, parent.id, 5, 'editar_video', editUser || null, null)
       histStmt.run(r.lastInsertRowid, 'backlog', userId)
       if (editUser) {
         db.prepare('INSERT OR IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)').run(r.lastInsertRowid, editUser)
-        notify(editUser, 'task_assigned', 'Editar videos', `"${parent.title} - Editar Video"`, r.lastInsertRowid, userId)
+        notify(editUser, 'task_assigned', 'Editar videos', `"Editar Video - ${parent.title}"`, r.lastInsertRowid, userId)
       }
       broadcastSSE(parent.client_id, 'task:created', { parent_id: parent.id })
     }

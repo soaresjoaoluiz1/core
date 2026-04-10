@@ -48,7 +48,7 @@ export default function TaskDetail() {
     if (!id) return
     const data = await fetchTask(+id)
     setTask(data.task); setComments(data.comments); setHistory(data.history); setAttachments(data.attachments)
-    setEditData({ title: data.task.title, description: data.task.description || '', due_date: data.task.due_date?.slice(0, 10) || '', priority: data.task.priority, department_id: data.task.department_id || '', assigned_to: (data.task.assignees || []).map((a: any) => String(a.user_id)), category_id: data.task.category_id || '', drive_link: data.task.drive_link || '', drive_link_raw: data.task.drive_link_raw || '', approval_link: data.task.approval_link || '', approval_text: data.task.approval_text || '', publish_date: data.task.publish_date || '', publish_objective: data.task.publish_objective || '' })
+    setEditData({ title: data.task.title, description: data.task.description || '', due_date: data.task.due_date?.slice(0, 10) || '', priority: data.task.priority, department_id: data.task.department_id || '', assigned_to: (data.task.assignees || []).map((a: any) => String(a.user_id)), category_id: data.task.category_id || '', drive_link: data.task.drive_link || '', drive_link_raw: data.task.drive_link_raw || '', approval_link: data.task.approval_link || '', approval_text: data.task.approval_text || '', publish_date: data.task.publish_date || '', publish_objective: data.task.publish_objective || '', meeting_datetime: (data.task as any).meeting_datetime || '', recording_datetime: (data.task as any).recording_datetime || '' })
     setTimeEntries(data.timeEntries || []); setTotalTime(data.totalTimeSeconds || 0)
     if (data.activeTimer) { setActiveTimerEntry(data.activeTimer); setTimerRunning(true) } else { setActiveTimerEntry(null); setTimerRunning(false) }
   }, [id])
@@ -252,6 +252,22 @@ export default function TaskDetail() {
                   <div className="form-group"><label>Link Drive (Arquivo Bruto)</label><input className="input" value={editData.drive_link_raw} onChange={e => setEditData((p: any) => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
                   <div className="form-group"><label>Link Drive (Arquivo Pronto)</label><input className="input" value={editData.drive_link} onChange={e => setEditData((p: any) => ({ ...p, drive_link: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
                 </div>
+                {/* Editorial workflow special fields */}
+                {(task as any).subtask_kind === 'briefing' && (
+                  <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(255,179,0,0.06)', border: '1px solid rgba(255,179,0,0.2)', borderRadius: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Reuniao de Apresentacao</div>
+                    <div className="form-group"><label>Data e Hora da Reuniao com o Cliente *</label><input className="input" type="datetime-local" value={editData.meeting_datetime} onChange={e => setEditData((p: any) => ({ ...p, meeting_datetime: e.target.value }))} /></div>
+                    <div style={{ fontSize: 10, color: '#6E6887' }}>Obrigatorio preencher antes de concluir o Briefing. Esta data ja vira o prazo da Reuniao Aprovacao Cliente.</div>
+                  </div>
+                )}
+                {(task as any).subtask_kind === 'aprov_briefing' && (
+                  <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(255,179,0,0.06)', border: '1px solid rgba(255,179,0,0.2)', borderRadius: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Marcar Gravacao</div>
+                    <div className="form-group"><label>Data e Hora da Gravacao *</label><input className="input" type="datetime-local" value={editData.recording_datetime} onChange={e => setEditData((p: any) => ({ ...p, recording_datetime: e.target.value }))} /></div>
+                    <div style={{ fontSize: 10, color: '#6E6887' }}>Obrigatorio preencher antes de concluir. Ao concluir, sera criada a tarefa de Gravacao (Ivandro) e Criar Imagens (Design) automaticamente.</div>
+                  </div>
+                )}
+
                 {/* Approval content section */}
                 <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(245,166,35,0.04)', border: '1px solid rgba(245,166,35,0.12)', borderRadius: 10 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Conteudo para Aprovacao</div>
@@ -291,6 +307,28 @@ export default function TaskDetail() {
                   {task.drive_link_raw && <a href={task.drive_link_raw} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm"><ExternalLink size={12} /> Arquivo Bruto</a>}
                   {task.drive_link && <a href={task.drive_link} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm"><ExternalLink size={12} /> Arquivo Pronto</a>}
                 </div>
+
+                {/* Editorial workflow display fields */}
+                {(task as any).subtask_kind === 'briefing' && (
+                  <div style={{ marginTop: 14, padding: '12px 14px', background: 'rgba(255,179,0,0.06)', border: '1px solid rgba(255,179,0,0.2)', borderRadius: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Reuniao de Apresentacao</div>
+                    {(task as any).meeting_datetime ? (
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{new Date((task as any).meeting_datetime).toLocaleString('pt-BR')}</div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: '#FFAA83' }}>Nao definida — preencha em "Editar" antes de concluir</div>
+                    )}
+                  </div>
+                )}
+                {(task as any).subtask_kind === 'aprov_briefing' && (
+                  <div style={{ marginTop: 14, padding: '12px 14px', background: 'rgba(255,179,0,0.06)', border: '1px solid rgba(255,179,0,0.2)', borderRadius: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Data da Gravacao</div>
+                    {(task as any).recording_datetime ? (
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{new Date((task as any).recording_datetime).toLocaleString('pt-BR')}</div>
+                    ) : (
+                      <div style={{ fontSize: 12, color: '#FFAA83' }}>Nao definida — preencha em "Editar" antes de concluir</div>
+                    )}
+                  </div>
+                )}
                 {/* Timer */}
                 {(isFunc || isDono) && (
                   <div style={{ marginTop: 16, padding: '12px 14px', background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px solid var(--border-subtle)' }}>
@@ -311,23 +349,6 @@ export default function TaskDetail() {
               </>
             )}
           </div>
-
-          {/* Confirm Recording CTA — only when mother editorial, briefing aprov done, gravacao not yet created */}
-          {(task as any).task_type === 'mae_editorial' && (task as any).subtasks && (() => {
-            const subs: any[] = (task as any).subtasks
-            const aprovBriefing = subs.find(s => s.subtask_kind === 'aprov_briefing')
-            const gravacao = subs.find(s => s.subtask_kind === 'gravacao')
-            const briefingApproved = aprovBriefing && aprovBriefing.stage === 'concluido'
-            return briefingApproved && !gravacao
-          })() && (isDono || user?.role === 'gerente') && (
-            <div className="card" style={{ marginBottom: 12, background: 'linear-gradient(135deg, rgba(255,179,0,0.08), rgba(255,107,107,0.04))', border: '1px solid rgba(255,179,0,0.3)' }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Briefing Aprovado</div>
-              <div style={{ fontSize: 14, color: '#F2F0F7', marginBottom: 12 }}>O cliente aprovou o briefing. Confirme a data de gravacao pra criar as tarefas de producao automaticamente.</div>
-              <button className="btn btn-primary btn-sm" onClick={() => setShowRecording(true)}>
-                <Video size={14} /> Confirmar Data de Gravacao
-              </button>
-            </div>
-          )}
 
           {/* Subtasks (when viewing a mother task) */}
           {(task as any).subtasks?.length > 0 && (
