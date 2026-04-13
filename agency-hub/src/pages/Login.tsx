@@ -17,9 +17,11 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <img src="https://drosagencia.com.br/wp-content/uploads/2025/12/DROS-LOGO-1-1024x1024.png" alt="Dros" style={{ height: 36, marginBottom: 16 }} />
-        <h1>Dros Hub</h1>
-        <div className="subtitle">Gestao de Projetos & Aprovacoes</div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 20 }}>
+          <img src="https://drosagencia.com.br/wp-content/uploads/2025/12/DROS-LOGO-1-1024x1024.png" alt="Dros" style={{ height: 80, marginBottom: 14 }} />
+          <h1 style={{ margin: 0 }}>Dros Hub</h1>
+          <div className="subtitle" style={{ marginTop: 4 }}>Gestao de Projetos & Aprovacoes</div>
+        </div>
         {error && <div className="login-error">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="form-group"><label>Email</label><input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} required /></div>
