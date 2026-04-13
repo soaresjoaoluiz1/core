@@ -284,6 +284,28 @@ export default function TaskDetail() {
                   )
                 })()}
 
+                {/* Captacao dept — recording date/time (for non-editorial tasks) */}
+                {!(task as any).subtask_kind && (() => {
+                  const selDept = departments.find(d => String(d.id) === String(editData.department_id))
+                  const isCaptacao = selDept && (/capt|produ/i.test(selDept.name))
+                  if (!isCaptacao) return null
+                  const dt = editData.recording_datetime || ''
+                  const datePart = dt.slice(0, 10)
+                  const timePart = dt.slice(11, 16)
+                  return (
+                    <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(255,179,0,0.06)', border: '1px solid rgba(255,179,0,0.2)', borderRadius: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+                        <Video size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Data e Hora da Gravacao
+                      </div>
+                      <div className="form-row">
+                        <div className="form-group"><label>Data</label><input className="input" type="date" value={datePart} onChange={e => setEditData((p: any) => ({ ...p, recording_datetime: e.target.value ? `${e.target.value}T${timePart || '09:00'}` : '' }))} /></div>
+                        <div className="form-group"><label>Hora</label><input className="input" type="time" value={timePart} onChange={e => setEditData((p: any) => ({ ...p, recording_datetime: datePart ? `${datePart}T${e.target.value || '09:00'}` : '' }))} /></div>
+                      </div>
+                      <div style={{ fontSize: 10, color: '#6E6887' }}>Essa tarefa aparecera no calendario de Gravacoes.</div>
+                    </div>
+                  )
+                })()}
+
                 {/* Approval content section */}
                 <div style={{ marginTop: 12, padding: '14px 16px', background: 'rgba(245,166,35,0.04)', border: '1px solid rgba(245,166,35,0.12)', borderRadius: 10 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Conteudo para Aprovacao</div>
@@ -345,7 +367,7 @@ export default function TaskDetail() {
                     )}
                   </div>
                 )}
-                {(task as any).subtask_kind === 'gravacao' && (task as any).recording_datetime && (
+                {(task as any).recording_datetime && ((task as any).subtask_kind === 'gravacao' || (/capt|produ/i.test(task.department_name || ''))) && (
                   <div style={{ marginTop: 14, padding: '14px 16px', background: 'linear-gradient(135deg, rgba(255,179,0,0.08), rgba(93,173,226,0.06))', border: '1px solid rgba(255,179,0,0.25)', borderRadius: 10 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
                       <Video size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Data e Hora da Gravacao

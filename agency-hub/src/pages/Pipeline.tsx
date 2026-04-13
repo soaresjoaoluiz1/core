@@ -34,7 +34,7 @@ export default function Pipeline() {
   const [showNew, setShowNew] = useState(false)
   const [showNewEditorial, setShowNewEditorial] = useState(false)
   const [newEditorial, setNewEditorial] = useState({ client_id: '', month_label: '', num_posts: '8', num_videos: '4', due_date: '', category_id: '' })
-  const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link_raw: '' })
+  const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link_raw: '', recording_date: '', recording_time: '' })
   const isDono = user?.role === 'dono' || user?.role === 'gerente'
 
   const loadData = useCallback(async () => {
@@ -71,8 +71,9 @@ export default function Pipeline() {
 
   const handleCreateTask = async () => {
     if (!newTask.title || !newTask.client_id) return
-    await createTask({ ...newTask, client_id: +newTask.client_id, category_id: newTask.category_id ? +newTask.category_id : undefined, department_id: newTask.department_id ? +newTask.department_id : undefined, assigned_to: newTask.assigned_to.map(Number) } as any)
-    setShowNew(false); setNewTask({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [], due_date: '', priority: 'normal', drive_link_raw: '' }); loadData()
+    const recording_datetime = newTask.recording_date ? `${newTask.recording_date}T${newTask.recording_time || '09:00'}` : undefined
+    await createTask({ ...newTask, client_id: +newTask.client_id, category_id: newTask.category_id ? +newTask.category_id : undefined, department_id: newTask.department_id ? +newTask.department_id : undefined, assigned_to: newTask.assigned_to.map(Number), recording_datetime } as any)
+    setShowNew(false); setNewTask({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [], due_date: '', priority: 'normal', drive_link_raw: '', recording_date: '', recording_time: '' }); loadData()
   }
 
   const handleCreateEditorial = async () => {
@@ -305,6 +306,22 @@ export default function Pipeline() {
             <div className="form-group"><label>Prioridade</label><select className="select" value={newTask.priority} onChange={e => setNewTask(p => ({ ...p, priority: e.target.value }))}><option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></div>
           </div>
           <div className="form-group"><label>Link Drive (Arquivo Bruto)</label><input className="input" value={newTask.drive_link_raw} onChange={e => setNewTask(p => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
+          {/* Show recording date/time fields when dept is Captacao */}
+          {(() => {
+            const selDept = departments.find(d => String(d.id) === newTask.department_id)
+            const isCaptacao = selDept && (/capt|produ/i.test(selDept.name))
+            if (!isCaptacao) return null
+            return (
+              <div style={{ padding: '12px 14px', background: 'rgba(255,179,0,0.06)', border: '1px solid rgba(255,179,0,0.2)', borderRadius: 10, marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Data e Hora da Gravacao</div>
+                <div className="form-row">
+                  <div className="form-group"><label>Data *</label><input className="input" type="date" value={newTask.recording_date} onChange={e => setNewTask(p => ({ ...p, recording_date: e.target.value }))} /></div>
+                  <div className="form-group"><label>Hora *</label><input className="input" type="time" value={newTask.recording_time} onChange={e => setNewTask(p => ({ ...p, recording_time: e.target.value }))} /></div>
+                </div>
+                <div style={{ fontSize: 10, color: '#6E6887' }}>Essa tarefa aparecera no calendario de Gravacoes.</div>
+              </div>
+            )
+          })()}
           <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNew(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreateTask}>Criar Tarefa</button></div>
         </div></div>
       )}

@@ -135,7 +135,7 @@ router.get('/pipeline', (req, res) => {
 
 // Create task
 router.post('/', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
-  const { client_id, title, description, category_id, department_id, assigned_to, due_date, priority, drive_link } = req.body
+  const { client_id, title, description, category_id, department_id, assigned_to, due_date, priority, drive_link, recording_datetime } = req.body
   if (!client_id || !title) return res.status(400).json({ error: 'client_id e title obrigatorios' })
 
   // assigned_to can be a single ID or array of IDs
@@ -143,9 +143,9 @@ router.post('/', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
   const primaryAssignee = assigneeIds[0] || null
 
   const result = db.prepare(`
-    INSERT INTO tasks (client_id, category_id, department_id, title, description, due_date, priority, assigned_to, drive_link, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(client_id, category_id || null, department_id || null, title, description || null, due_date || null, priority || 'normal', primaryAssignee, drive_link || null, req.user.id)
+    INSERT INTO tasks (client_id, category_id, department_id, title, description, due_date, priority, assigned_to, drive_link, created_by, recording_datetime)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(client_id, category_id || null, department_id || null, title, description || null, due_date || null, priority || 'normal', primaryAssignee, drive_link || null, req.user.id, recording_datetime || null)
 
   setAssignees(result.lastInsertRowid, assigneeIds)
   db.prepare('INSERT INTO task_history (task_id, to_stage, user_id) VALUES (?, ?, ?)').run(result.lastInsertRowid, 'backlog', req.user.id)
@@ -178,10 +178,15 @@ router.get('/gravacoes/calendar', (req, res) => {
     FROM tasks t
     LEFT JOIN clients c ON t.client_id = c.id
     LEFT JOIN pipeline_stages ps ON t.stage = ps.slug
-    WHERE t.subtask_kind = 'gravacao'
-      AND t.is_active = 1
+    LEFT JOIN departments d ON t.department_id = d.id
+    WHERE t.is_active = 1
       AND t.recording_datetime IS NOT NULL
       AND substr(t.recording_datetime, 1, 10) BETWEEN ? AND ?
+      AND (
+        t.subtask_kind = 'gravacao'
+        OR d.name LIKE '%Capt%'
+        OR d.name LIKE '%Producao%'
+      )
     ORDER BY t.recording_datetime
   `).all(startDate, endDate)
 
