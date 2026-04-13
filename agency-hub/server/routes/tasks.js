@@ -550,7 +550,7 @@ function triggerEditorialWorkflow(completedTask, userId) {
   const edicaoId = findDept('%Ed%Vid%') || findDept('%Edit%')
   const ivandroId = findUser('%Ivandro%')
   const dalilaId = findUser('%Dalila%')
-  const grazielleId = findUser('%Grazielle%') || findUser('%Grazi%')
+  const grazielleId = findUser('%Graziele%') || findUser('%Grazi%')
 
   const createSubtask = (opts) => {
     const exists = db.prepare("SELECT id FROM tasks WHERE parent_task_id = ? AND subtask_kind = ?").get(parent.id, opts.kind)
