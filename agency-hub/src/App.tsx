@@ -17,6 +17,7 @@ import SettingsPage from './pages/Settings'
 import Notifications from './pages/Notifications'
 import Services from './pages/Services'
 import Financial from './pages/Financial'
+import Gravacoes from './pages/Gravacoes'
 import Onboard from './pages/Onboard'
 import TimerCheck from './components/TimerCheck'
 
@@ -44,6 +45,7 @@ function AppRoutes() {
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/tasks/:id" element={<TaskDetail />} />
             {(isDono || isFunc) && <Route path="/pipeline" element={<Pipeline />} />}
+            {(isDono || isFunc) && <Route path="/gravacoes" element={<Gravacoes />} />}
             {(isDono || isCliente) && <Route path="/approvals" element={<Approvals />} />}
             {isDono && <>
               <Route path="/clients" element={<Clients />} />

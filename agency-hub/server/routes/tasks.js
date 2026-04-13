@@ -159,6 +159,35 @@ router.post('/', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
   res.json({ task })
 })
 
+// Gravacoes calendar — list recording tasks for a given month
+router.get('/gravacoes/calendar', (req, res) => {
+  const { month } = req.query
+  if (!month) return res.status(400).json({ error: 'month obrigatorio (ex: 2026-05)' })
+  const startDate = `${month}-01`
+  const endParts = month.split('-')
+  const endYear = parseInt(endParts[0])
+  const endMonth = parseInt(endParts[1])
+  const lastDay = new Date(endYear, endMonth, 0).getDate()
+  const endDate = `${month}-${String(lastDay).padStart(2, '0')}`
+
+  const gravacoes = db.prepare(`
+    SELECT t.id, t.title, t.recording_datetime, t.due_date, t.stage, t.client_id, t.parent_task_id,
+      c.name as client_name,
+      (SELECT GROUP_CONCAT(u2.name, ', ') FROM task_assignees ta2 JOIN users u2 ON ta2.user_id = u2.id WHERE ta2.task_id = t.id) as assigned_name,
+      ps.name as stage_name, ps.color as stage_color
+    FROM tasks t
+    LEFT JOIN clients c ON t.client_id = c.id
+    LEFT JOIN pipeline_stages ps ON t.stage = ps.slug
+    WHERE t.subtask_kind = 'gravacao'
+      AND t.is_active = 1
+      AND t.recording_datetime IS NOT NULL
+      AND substr(t.recording_datetime, 1, 10) BETWEEN ? AND ?
+    ORDER BY t.recording_datetime
+  `).all(startDate, endDate)
+
+  res.json({ gravacoes })
+})
+
 // Create Editorial parent task with fixed subtasks (hardcoded workflow)
 router.post('/editorial', requireRole('dono', 'gerente'), (req, res) => {
   const { client_id, month_label, num_posts, num_videos, due_date, category_id } = req.body
@@ -651,6 +680,14 @@ router.post('/:id/attachments', requireRole('dono', 'gerente', 'funcionario'), (
   if (!url || !filename) return res.status(400).json({ error: 'url e filename obrigatorios' })
   const result = db.prepare('INSERT INTO task_attachments (task_id, url, filename, type, uploaded_by) VALUES (?, ?, ?, ?, ?)').run(req.params.id, url, filename, type || 'file', req.user.id)
   res.json({ attachment: db.prepare('SELECT * FROM task_attachments WHERE id = ?').get(result.lastInsertRowid) })
+})
+
+// Delete attachment
+router.delete('/:id/attachments/:attId', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
+  const att = db.prepare('SELECT * FROM task_attachments WHERE id = ? AND task_id = ?').get(req.params.attId, req.params.id)
+  if (!att) return res.status(404).json({ error: 'Anexo nao encontrado' })
+  db.prepare('DELETE FROM task_attachments WHERE id = ?').run(req.params.attId)
+  res.json({ ok: true })
 })
 
 // Pipeline stages list

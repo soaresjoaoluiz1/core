@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
-import { fetchTask, fetchClients, fetchDepartments, fetchUsers, fetchCategories, fetchStages, updateTask, moveTaskStage, addTaskComment, addTaskAttachment, approveTask, rejectTask, startTimer, stopTimer, confirmRecording, type Task, type TaskComment, type TaskHistory, type TaskAttachment, type TimeEntry, type Client, type Department, type User as UserT, type TaskCategory, type PipelineStage } from '../lib/api'
-import { ArrowLeft, Building2, Clock, User, ExternalLink, CheckCircle, XCircle, Send, MessageCircle, GitBranch, Paperclip, Eye, Edit3, Save, X, Plus, AlertTriangle, Layers, ChevronRight, Video } from 'lucide-react'
+import { fetchTask, fetchClients, fetchDepartments, fetchUsers, fetchCategories, fetchStages, updateTask, moveTaskStage, addTaskComment, addTaskAttachment, deleteTaskAttachment, approveTask, rejectTask, startTimer, stopTimer, confirmRecording, type Task, type TaskComment, type TaskHistory, type TaskAttachment, type TimeEntry, type Client, type Department, type User as UserT, type TaskCategory, type PipelineStage } from '../lib/api'
+import { ArrowLeft, Building2, Clock, User, ExternalLink, CheckCircle, XCircle, Send, MessageCircle, GitBranch, Paperclip, Eye, Edit3, Save, X, Plus, AlertTriangle, Layers, ChevronRight, Video, Trash2 } from 'lucide-react'
 
 export default function TaskDetail() {
   const { id } = useParams()
@@ -345,6 +345,19 @@ export default function TaskDetail() {
                     )}
                   </div>
                 )}
+                {(task as any).subtask_kind === 'gravacao' && (task as any).recording_datetime && (
+                  <div style={{ marginTop: 14, padding: '14px 16px', background: 'linear-gradient(135deg, rgba(255,179,0,0.08), rgba(93,173,226,0.06))', border: '1px solid rgba(255,179,0,0.25)', borderRadius: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>
+                      <Video size={12} style={{ verticalAlign: 'middle', marginRight: 4 }} /> Data e Hora da Gravacao
+                    </div>
+                    <div style={{ fontSize: 20, fontWeight: 800, fontFamily: 'var(--font-heading)', color: '#F2F0F7' }}>
+                      {new Date((task as any).recording_datetime).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: '#FFB300', marginTop: 2 }}>
+                      {new Date((task as any).recording_datetime).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                )}
                 {/* Timer — mae editorial mostra agregado sem botoes; tarefas normais e subtarefas tem o botao */}
                 {(isFunc || isDono) && (() => {
                   const isMother = (task as any).task_type && (task as any).task_type !== 'normal'
@@ -551,7 +564,10 @@ export default function TaskDetail() {
               {attachments.map(a => (
                 <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border-subtle)' }}>
                   <div><div style={{ fontSize: 13, fontWeight: 600 }}>{a.filename}</div><div style={{ fontSize: 10, color: '#6B6580' }}>{a.uploaded_by_name} · {new Date(a.created_at).toLocaleString('pt-BR')}</div></div>
-                  <a href={a.url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm"><Eye size={12} /> Ver</a>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <a href={a.url} target="_blank" rel="noopener noreferrer" className="btn btn-secondary btn-sm"><Eye size={12} /> Ver</a>
+                    {canEdit && <button className="btn btn-danger btn-sm btn-icon" onClick={() => { if (confirm(`Excluir anexo "${a.filename}"?`)) { deleteTaskAttachment(task!.id, a.id).then(loadTask) } }}><Trash2 size={12} /></button>}
+                  </div>
                 </div>
               ))}
               {attachments.length === 0 && <div style={{ textAlign: 'center', color: '#6B6580', padding: 30 }}>Nenhum anexo</div>}

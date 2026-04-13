@@ -88,6 +88,10 @@ export const updateTask = (id: number, data: Partial<Task>) => apiFetch(`/api/ta
 export const moveTaskStage = (id: number, stage: string, comment?: string) => apiFetch(`/api/tasks/${id}/stage`, { method: 'PUT', body: JSON.stringify({ stage, comment }) })
 export const addTaskComment = (taskId: number, content: string, isInternal = false) => apiFetch<{ comment: TaskComment }>(`/api/tasks/${taskId}/comments`, { method: 'POST', body: JSON.stringify({ content, is_internal: isInternal }) }).then(d => d.comment)
 export const addTaskAttachment = (taskId: number, url: string, filename: string) => apiFetch(`/api/tasks/${taskId}/attachments`, { method: 'POST', body: JSON.stringify({ url, filename }) })
+export const deleteTaskAttachment = (taskId: number, attId: number) => apiFetch(`/api/tasks/${taskId}/attachments/${attId}`, { method: 'DELETE' })
+
+export interface GravacaoEvent { id: number; title: string; recording_datetime: string; due_date: string | null; stage: string; client_id: number; parent_task_id: number | null; client_name: string; assigned_name: string | null; stage_name: string; stage_color: string }
+export const fetchGravacoes = (month: string) => apiFetch<{ gravacoes: GravacaoEvent[] }>(`/api/tasks/gravacoes/calendar?month=${month}`).then(d => d.gravacoes)
 
 export const fetchInternalApprovals = () => apiFetch<{ tasks: Task[] }>('/api/approvals/internal').then(d => d.tasks)
 export const fetchClientApprovals = () => apiFetch<{ tasks: Task[] }>('/api/approvals/client').then(d => d.tasks)

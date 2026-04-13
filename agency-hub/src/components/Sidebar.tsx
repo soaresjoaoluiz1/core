@@ -5,7 +5,7 @@ import { useSSE } from '../context/SSEContext'
 import { apiFetch } from '../lib/api'
 import {
   LayoutDashboard, Kanban, ListTodo, CheckCircle, Building2, UsersRound,
-  Layers, Tag, Briefcase, DollarSign, Settings, LogOut, Menu, X, ChevronsLeft, ChevronsRight,
+  Layers, Tag, Briefcase, DollarSign, Settings, LogOut, Menu, X, ChevronsLeft, ChevronsRight, Video,
 } from 'lucide-react'
 import NotificationBell from './NotificationBell'
 
@@ -58,6 +58,11 @@ export default function Sidebar() {
           {(isDono || isFunc) && (
             <NavLink to="/pipeline" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}>
               <Kanban size={16} /> Pipeline
+            </NavLink>
+          )}
+          {(isDono || isFunc) && (
+            <NavLink to="/gravacoes" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}>
+              <Video size={16} /> Gravacoes
             </NavLink>
           )}
           <NavLink to="/tasks" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}>
