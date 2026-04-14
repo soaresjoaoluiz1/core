@@ -122,7 +122,9 @@ router.get('/pipeline', (req, res) => {
   if (department_id) { where.push('t.department_id = ?'); params.push(department_id) }
   if (assigned_to) { where.push('t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)'); params.push(assigned_to) }
 
-  const stages = db.prepare('SELECT * FROM pipeline_stages ORDER BY position').all()
+  // Pipeline esconde solicitacao_pendente (cliente usa so a lista de Tarefas, dono usa aba Aprovacoes)
+  where.push("t.stage != 'solicitacao_pendente'")
+  const stages = db.prepare("SELECT * FROM pipeline_stages WHERE slug != 'solicitacao_pendente' ORDER BY position").all()
   const tasks = db.prepare(`
     SELECT t.*, c.name as client_name, d.name as department_name, d.color as department_color,
       (SELECT GROUP_CONCAT(u2.name, ', ') FROM task_assignees ta2 JOIN users u2 ON ta2.user_id = u2.id WHERE ta2.task_id = t.id) as assigned_name,
@@ -293,8 +295,8 @@ router.post('/editorial', requireRole('dono', 'gerente'), (req, res) => {
     const parentId = parentResult.lastInsertRowid
     histStmt.run(parentId, 'backlog', req.user.id)
 
-    // Initial subtasks (apenas 2 — o resto e criado dinamicamente via triggers)
-    // Positions: 1 briefing, 2 reuniao, 3-9 reservadas pras tarefas dinamicas
+    // Initial subtasks — 2 iniciais + 3 finais (producao dinamica entre elas)
+    // Positions: 1 briefing, 2 reuniao, 3-8 reservadas pras tarefas dinamicas, 9-11 finais
     const subs = [
       {
         title: 'Briefing (Ideias + Copies)',
@@ -306,6 +308,24 @@ router.post('/editorial', requireRole('dono', 'gerente'), (req, res) => {
         title: 'Reuniao Aprovacao Cliente (Briefing)',
         dept: socialId, pos: 2, kind: 'aprov_briefing',
         description: 'Apresentar Briefing, ideias e copys/roteiros para o cliente em reuniao e pedir aprovacao do mesmo.\n\nAo concluir, e obrigatorio informar a Data e Hora da Gravacao para criar a tarefa de Gravacao automaticamente.',
+        assigned: null,
+      },
+      {
+        title: 'Aprovacao Interna Final',
+        dept: null, pos: 9, kind: 'aprov_interna_final',
+        description: 'Revisao interna final de todo o material produzido antes de enviar pra aprovacao do cliente.',
+        assigned: null,
+      },
+      {
+        title: 'Aprovacao Cliente (Final)',
+        dept: null, pos: 10, kind: 'aprov_cliente_final',
+        description: 'Cliente aprova todo o material final produzido no mes.',
+        assigned: null,
+      },
+      {
+        title: 'Publicacao',
+        dept: socialId, pos: 11, kind: 'publicacao',
+        description: 'Confirmar que todas as pecas foram publicadas conforme cronograma.',
         assigned: null,
       },
     ]
@@ -707,7 +727,7 @@ function triggerEditorialWorkflow(completedTask, userId) {
   }
 
   // === Quando TODAS as subtarefas conhecidas estiverem concluidas, mae vai pra concluido ===
-  const allKinds = ['briefing', 'aprov_briefing', 'criar_imagens', 'prog_publ_imagens', 'gravacao', 'subir_arquivos', 'editar_video', 'prog_publ_videos']
+  const allKinds = ['briefing', 'aprov_briefing', 'criar_imagens', 'prog_publ_imagens', 'gravacao', 'subir_arquivos', 'editar_video', 'prog_publ_videos', 'aprov_interna_final', 'aprov_cliente_final', 'publicacao']
   const status = db.prepare(`
     SELECT COUNT(*) as total,
       SUM(CASE WHEN stage = 'concluido' THEN 1 ELSE 0 END) as done

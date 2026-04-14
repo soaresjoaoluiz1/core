@@ -356,19 +356,22 @@ export default function Pipeline() {
             <div className="form-group"><label>Categoria</label><select className="select" value={newEditorial.category_id} onChange={e => setNewEditorial(p => ({ ...p, category_id: e.target.value }))}><option value="">Nenhuma</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
           </div>
           <div style={{ padding: '10px 12px', background: 'rgba(255,179,0,0.06)', border: '1px solid rgba(255,179,0,0.18)', borderRadius: 8, fontSize: 11, color: '#A8A3B8', marginBottom: 12 }}>
-            <strong style={{ color: '#FFB300' }}>Inicia com 2 subtarefas:</strong>
+            <strong style={{ color: '#FFB300' }}>Inicia com 5 subtarefas:</strong>
             <ol style={{ margin: '6px 0 0 16px', padding: 0 }}>
               <li>Briefing (Ideias + Copies) → Ivandro</li>
               <li>Reuniao Aprovacao Cliente (Briefing)</li>
+              <li>Aprovacao Interna Final</li>
+              <li>Aprovacao Cliente (Final)</li>
+              <li>Publicacao</li>
             </ol>
-            <strong style={{ color: '#FFB300', display: 'block', marginTop: 8 }}>Criadas automaticamente apos:</strong>
+            <strong style={{ color: '#FFB300', display: 'block', marginTop: 8 }}>Criadas automaticamente durante o fluxo:</strong>
             <ul style={{ margin: '6px 0 0 16px', padding: 0, listStyle: 'disc' }}>
               <li>Briefing → Criar Imagens (Dalila, em paralelo)</li>
-              <li>Criar Imagens → Programar Publ Imagens (Grazielle)</li>
+              <li>Criar Imagens → Programar Publ Imagens (Graziele)</li>
               <li>Reuniao → Gravacao (Ivandro, prazo na data marcada)</li>
               <li>Gravacao → Subir Arquivos (Ivandro)</li>
               <li>Subir Arquivos → Editar Videos (Ivandro)</li>
-              <li>Editar Videos → Programar Publ Videos (Grazielle)</li>
+              <li>Editar Videos → Programar Publ Videos (Graziele)</li>
             </ul>
             <div style={{ marginTop: 8, fontStyle: 'italic' }}>Quando todas concluirem, a tarefa-mae auto-conclui.</div>
           </div>
