@@ -324,9 +324,9 @@ export default function TaskDetail() {
               </>
             ) : (
               <>
-                {task.description && <div style={{ fontSize: 13, color: '#A8A3B8', marginBottom: 16, lineHeight: 1.6 }}>{task.description}</div>}
+                {task.description && !isCliente && <div style={{ fontSize: 13, color: '#A8A3B8', marginBottom: 16, lineHeight: 1.6 }}>{task.description}</div>}
                 {/* Overdue warning */}
-                {task.due_date && (() => { const n = new Date(); return task.due_date.slice(0, 10) < `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}` })() && task.stage !== 'concluido' && task.stage !== 'rejeitado' && (
+                {!isCliente && task.due_date && (() => { const n = new Date(); return task.due_date.slice(0, 10) < `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}` })() && task.stage !== 'concluido' && task.stage !== 'rejeitado' && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', background: 'rgba(255,107,107,0.08)', borderRadius: 8, marginBottom: 12, fontSize: 12, color: '#FF6B6B', fontWeight: 600 }}>
                     <AlertTriangle size={14} /> Tarefa atrasada! Prazo era {task.due_date.slice(0, 10)}
                   </div>
@@ -337,7 +337,7 @@ export default function TaskDetail() {
                   {task.category_name && <div className="lead-info-row"><span className="lead-info-label">Categoria</span><span className="stage-badge" style={{ background: `${task.category_color}20`, color: task.category_color }}>{task.category_name}</span></div>}
                   <div className="lead-info-row"><span className="lead-info-label"><User size={12} /> Responsavel</span><span className="lead-info-value">{task.assigned_name || 'Nao atribuido'}</span></div>
                   <div className="lead-info-row"><span className="lead-info-label">Prioridade</span><span className="lead-info-value" style={{ color: task.priority === 'urgent' ? '#FF6B6B' : task.priority === 'high' ? '#FFAA83' : '#A8A3B8' }}>{task.priority}</span></div>
-                  {task.due_date && (() => { const n = new Date(); const today = `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; const due = task.due_date.slice(0, 10); const overdue = due < today && task.stage !== 'concluido' && task.stage !== 'rejeitado'; const soon = !overdue && due <= today; return <div className="lead-info-row"><span className="lead-info-label"><Clock size={12} /> Prazo</span><span className="lead-info-value" style={{ color: overdue ? '#FF6B6B' : soon ? '#FBBC04' : undefined }}>{due}{overdue ? ' (ATRASADO)' : ''}</span></div> })()}
+                  {!isCliente && task.due_date && (() => { const n = new Date(); const today = `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; const due = task.due_date.slice(0, 10); const overdue = due < today && task.stage !== 'concluido' && task.stage !== 'rejeitado'; const soon = !overdue && due <= today; return <div className="lead-info-row"><span className="lead-info-label"><Clock size={12} /> Prazo</span><span className="lead-info-value" style={{ color: overdue ? '#FF6B6B' : soon ? '#FBBC04' : undefined }}>{due}{overdue ? ' (ATRASADO)' : ''}</span></div> })()}
                   <div className="lead-info-row"><span className="lead-info-label">Criado por</span><span className="lead-info-value">{task.created_by_name}</span></div>
                   <div className="lead-info-row"><span className="lead-info-label"><Clock size={12} /> Criado em</span><span className="lead-info-value">{new Date(task.created_at).toLocaleString('pt-BR')}</span></div>
                 </div>
