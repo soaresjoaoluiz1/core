@@ -170,12 +170,12 @@ router.post('/', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
 // Client creates a task request (requires internal approval before becoming work)
 router.post('/request', (req, res) => {
   if (req.user.role !== 'cliente') return res.status(403).json({ error: 'Apenas clientes podem criar solicitacoes' })
-  const { title, description } = req.body
+  const { title, description, drive_link_raw } = req.body
   if (!title) return res.status(400).json({ error: 'title obrigatorio' })
   const result = db.prepare(`
-    INSERT INTO tasks (client_id, title, description, stage, priority, created_by, requested_by_client)
-    VALUES (?, ?, ?, 'solicitacao_pendente', 'normal', ?, 1)
-  `).run(req.user.client_id, title, description || null, req.user.id)
+    INSERT INTO tasks (client_id, title, description, stage, priority, created_by, requested_by_client, drive_link_raw)
+    VALUES (?, ?, ?, 'solicitacao_pendente', 'normal', ?, 1, ?)
+  `).run(req.user.client_id, title, description || null, req.user.id, drive_link_raw || null)
   db.prepare('INSERT INTO task_history (task_id, to_stage, user_id, comment) VALUES (?, ?, ?, ?)').run(result.lastInsertRowid, 'solicitacao_pendente', req.user.id, 'Solicitacao criada pelo cliente')
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid)
   broadcastSSE(task.client_id, 'task:created', task)

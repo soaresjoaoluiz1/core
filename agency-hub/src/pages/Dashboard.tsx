@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { fetchDashboardStats, fetchDashboardTrends, fetchTeamWorkload, formatNumber } from '../lib/api'
+import { fetchDashboardStats, fetchDashboardTrends, fetchTeamWorkload, createTaskRequest, formatNumber } from '../lib/api'
 import { ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ComposedChart, Line } from 'recharts'
-import { ListTodo, Clock, CheckCircle, AlertTriangle, Send, Calendar, Users, TrendingUp } from 'lucide-react'
+import { ListTodo, Clock, CheckCircle, AlertTriangle, Send, Calendar, Users, TrendingUp, Plus } from 'lucide-react'
 
 const COLORS = ['#6B6580', '#5DADE2', '#9B59B6', '#FFAA83', '#FFB300', '#34C759', '#FF6B8A', '#34C759', '#FF6B6B']
 const STATUS_COLORS: Record<string, string> = { available: '#34C759', busy: '#FBBC04', overloaded: '#FF6B6B' }
@@ -25,6 +25,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [days, setDays] = useState(30)
   const isDono = user?.role === 'dono'
+  const isCliente = user?.role === 'cliente'
+  const [showRequest, setShowRequest] = useState(false)
+  const [newRequest, setNewRequest] = useState({ title: '', description: '', drive_link_raw: '' })
 
   useEffect(() => {
     setLoading(true)
@@ -50,9 +53,15 @@ export default function Dashboard() {
     <div>
       <div className="page-header">
         <h1>Dashboard</h1>
-        <div className="date-selector">
-          {[7, 14, 30, 90].map(d => <button key={d} className={`date-btn ${days === d ? 'active' : ''}`} onClick={() => setDays(d)}>{d}d</button>)}
-        </div>
+        {isCliente ? (
+          <button onClick={() => setShowRequest(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', background: 'linear-gradient(135deg, #FFB300, #FFAA83)', color: '#1a1625', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 2px 8px rgba(255,179,0,0.2)', textTransform: 'uppercase', letterSpacing: '0.03em', fontFamily: 'inherit' }}>
+            <Plus size={16} /> Solicitar Nova Tarefa
+          </button>
+        ) : (
+          <div className="date-selector">
+            {[7, 14, 30, 90].map(d => <button key={d} className={`date-btn ${days === d ? 'active' : ''}`} onClick={() => setDays(d)}>{d}d</button>)}
+          </div>
+        )}
       </div>
 
       {/* KPIs */}
@@ -186,6 +195,22 @@ export default function Dashboard() {
             </table>
           </div>
         </section>
+      )}
+
+      {showRequest && (
+        <div className="modal-overlay" onClick={() => setShowRequest(false)}><div className="modal" style={{ maxWidth: 540 }} onClick={e => e.stopPropagation()}>
+          <h2><Plus size={20} style={{ marginRight: 8, verticalAlign: 'middle', color: '#FFB300' }} />Solicitar Nova Tarefa</h2>
+          <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Sua solicitacao sera enviada para aprovacao do gerente/CEO. Apos aprovada, a equipe entrara em producao.</p>
+          <div className="form-group"><label>Titulo *</label><input className="input" value={newRequest.title} onChange={e => setNewRequest(p => ({ ...p, title: e.target.value }))} placeholder="Ex: Criar post novo sobre lancamento" /></div>
+          <div className="form-group"><label>Descricao</label><textarea className="input" rows={5} value={newRequest.description} onChange={e => setNewRequest(p => ({ ...p, description: e.target.value }))} placeholder="Seja especifico e detalhado. O que, quando, como..." /></div>
+          <div className="form-group"><label>Link dos arquivos (opcional)</label><input className="input" value={newRequest.drive_link_raw} onChange={e => setNewRequest(p => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/... ou outro link" /></div>
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setShowRequest(false)}>Cancelar</button>
+            <button className="btn btn-primary" disabled={!newRequest.title} onClick={async () => { await createTaskRequest({ title: newRequest.title, description: newRequest.description, drive_link_raw: newRequest.drive_link_raw || undefined }); setShowRequest(false); setNewRequest({ title: '', description: '', drive_link_raw: '' }); alert('Solicitacao enviada! A equipe sera notificada.') }}>
+              Enviar Solicitacao
+            </button>
+          </div>
+        </div></div>
       )}
     </div>
   )

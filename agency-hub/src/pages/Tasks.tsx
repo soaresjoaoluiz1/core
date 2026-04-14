@@ -56,7 +56,7 @@ export default function Tasks() {
   // Modal
   const [showNew, setShowNew] = useState(false)
   const [showRequest, setShowRequest] = useState(false)
-  const [newRequest, setNewRequest] = useState({ title: '', description: '' })
+  const [newRequest, setNewRequest] = useState({ title: '', description: '', drive_link_raw: '' })
   const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link: '' })
   // Bulk
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -288,9 +288,10 @@ export default function Tasks() {
           <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Sua solicitacao sera enviada para aprovacao da equipe. Apos aprovada, entrara em producao.</p>
           <div className="form-group"><label>Titulo *</label><input className="input" value={newRequest.title} onChange={e => setNewRequest(p => ({ ...p, title: e.target.value }))} placeholder="Ex: Mudar bio do perfil..." /></div>
           <div className="form-group"><label>Descricao</label><textarea className="input" rows={4} value={newRequest.description} onChange={e => setNewRequest(p => ({ ...p, description: e.target.value }))} placeholder="Detalhes da solicitacao..." /></div>
+          <div className="form-group"><label>Link dos arquivos (opcional)</label><input className="input" value={newRequest.drive_link_raw} onChange={e => setNewRequest(p => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/... ou outro" /></div>
           <div className="modal-actions">
             <button className="btn btn-secondary" onClick={() => setShowRequest(false)}>Cancelar</button>
-            <button className="btn btn-primary" disabled={!newRequest.title} onClick={async () => { await createTaskRequest({ title: newRequest.title, description: newRequest.description }); setShowRequest(false); setNewRequest({ title: '', description: '' }); loadTasks() }}>Enviar Solicitacao</button>
+            <button className="btn btn-primary" disabled={!newRequest.title} onClick={async () => { await createTaskRequest({ title: newRequest.title, description: newRequest.description, drive_link_raw: newRequest.drive_link_raw || undefined }); setShowRequest(false); setNewRequest({ title: '', description: '', drive_link_raw: '' }); loadTasks() }}>Enviar Solicitacao</button>
           </div>
         </div></div>
       )}
