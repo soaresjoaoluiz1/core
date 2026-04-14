@@ -50,7 +50,9 @@ router.get('/', (req, res) => {
 
   // Role-based scoping
   if (req.user.role === 'cliente') {
+    // Cliente so ve tarefas voltadas pra ele: aguardando aprovacao, aprovadas, publicadas
     where.push('t.client_id = ?'); params.push(req.user.client_id)
+    where.push("t.stage IN ('aguardando_cliente', 'aprovado_cliente', 'programar_publicacao', 'concluido', 'rejeitado')")
   } else if (req.user.role === 'funcionario') {
     // See tasks assigned to them OR in their departments
     where.push('(t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?) OR t.department_id IN (SELECT department_id FROM user_departments WHERE user_id = ?))')
@@ -78,6 +80,7 @@ router.get('/', (req, res) => {
       (SELECT COUNT(*) FROM task_comments WHERE task_id = t.id) as comment_count,
       (SELECT COUNT(*) FROM tasks ts WHERE ts.parent_task_id = t.id AND ts.is_active = 1) as subtask_count,
       (SELECT COUNT(*) FROM tasks ts WHERE ts.parent_task_id = t.id AND ts.is_active = 1 AND ts.stage = 'concluido') as subtask_done_count,
+      (SELECT MAX(th.created_at) FROM task_history th WHERE th.task_id = t.id AND th.to_stage = 'aguardando_cliente') as waiting_client_since,
       ps.name as stage_name, ps.color as stage_color
     FROM tasks t
     LEFT JOIN clients c ON t.client_id = c.id
@@ -110,7 +113,10 @@ router.get('/pipeline', (req, res) => {
     )
   )`)
 
-  if (req.user.role === 'cliente') { where.push('t.client_id = ?'); params.push(req.user.client_id) }
+  if (req.user.role === 'cliente') {
+    where.push('t.client_id = ?'); params.push(req.user.client_id)
+    where.push("t.stage IN ('aguardando_cliente', 'aprovado_cliente', 'programar_publicacao', 'concluido', 'rejeitado')")
+  }
   else if (req.user.role === 'funcionario') { where.push('(t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?) OR t.department_id IN (SELECT department_id FROM user_departments WHERE user_id = ?))'); params.push(req.user.id, req.user.id) }
   if (client_id) { where.push('t.client_id = ?'); params.push(client_id) }
   if (department_id) { where.push('t.department_id = ?'); params.push(department_id) }

@@ -29,6 +29,7 @@ export default function Tasks() {
   const navigate = useNavigate()
   const isDono = user?.role === 'dono'
   const isFunc = user?.role === 'funcionario'
+  const isCliente = user?.role === 'cliente'
   const [tasks, setTasks] = useState<Task[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -206,11 +207,11 @@ export default function Tasks() {
             <thead><tr>
               {isDono && <th style={{ width: 32 }}><button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B6580' }} onClick={toggleSelectAll}>{selected.size === tasks.length && tasks.length > 0 ? <CheckSquare size={14} /> : <Square size={14} />}</button></th>}
               <SortHeader field="title">Titulo</SortHeader>
-              <th>Cliente</th>
+              {!isCliente && <th>Cliente</th>}
               <SortHeader field="stage">Etapa</SortHeader>
-              <th>Responsavel</th>
-              <SortHeader field="priority">Prioridade</SortHeader>
-              <SortHeader field="due_date">Prazo</SortHeader>
+              {!isCliente && <th>Responsavel</th>}
+              {!isCliente && <SortHeader field="priority">Prioridade</SortHeader>}
+              {isCliente ? <th className="right">Aguardando</th> : <SortHeader field="due_date">Prazo</SortHeader>}
               <SortHeader field="created_at">Criado</SortHeader>
             </tr></thead>
             <tbody>
@@ -218,6 +219,11 @@ export default function Tasks() {
                 const overdue = isOverdue(t.due_date) && t.stage !== 'concluido' && t.stage !== 'rejeitado'
                 const soon = isDueSoon(t.due_date) && !overdue
                 const pc = PRIORITY_COLORS[t.priority] || PRIORITY_COLORS.normal
+                // For cliente: compute days waiting since moved to aguardando_cliente
+                const waitingSince = (t as any).waiting_client_since
+                const waitingDays = (isCliente && t.stage === 'aguardando_cliente' && waitingSince)
+                  ? Math.max(0, Math.floor((Date.now() - new Date(waitingSince + '-03:00').getTime()) / 86400000))
+                  : null
                 return (
                   <tr key={t.id} style={{ cursor: 'pointer', background: overdue ? 'rgba(255,107,107,0.03)' : undefined }}>
                     {isDono && <td onClick={e => { e.stopPropagation(); toggleSelect(t.id) }}><span style={{ color: selected.has(t.id) ? '#FFB300' : '#6B6580', cursor: 'pointer' }}>{selected.has(t.id) ? <CheckSquare size={14} /> : <Square size={14} />}</span></td>}
@@ -225,18 +231,24 @@ export default function Tasks() {
                       {t.title} {t.drive_link && <ExternalLink size={10} style={{ color: '#5DADE2', marginLeft: 4 }} />}
                       {overdue && <AlertTriangle size={10} style={{ color: '#FF6B6B', marginLeft: 4 }} />}
                     </td>
-                    <td onClick={() => navigate(`/tasks/${t.id}`)} style={{ fontSize: 12 }}><Building2 size={10} /> {t.client_name}</td>
+                    {!isCliente && <td onClick={() => navigate(`/tasks/${t.id}`)} style={{ fontSize: 12 }}><Building2 size={10} /> {t.client_name}</td>}
                     <td onClick={() => navigate(`/tasks/${t.id}`)}><span className="stage-badge" style={{ background: `${t.stage_color}20`, color: t.stage_color }}>{t.stage_name}</span></td>
-                    <td onClick={() => navigate(`/tasks/${t.id}`)}>{t.assigned_name || <span style={{ color: '#6B6580' }}>-</span>}</td>
-                    <td onClick={() => navigate(`/tasks/${t.id}`)}><span className="stage-badge" style={{ background: pc.bg, color: pc.text }}>{t.priority === 'urgent' ? '🔴 ' : t.priority === 'high' ? '🟠 ' : ''}{t.priority}</span></td>
-                    <td className="right" onClick={() => navigate(`/tasks/${t.id}`)} style={{ color: overdue ? '#FF6B6B' : soon ? '#FBBC04' : '#6B6580', fontWeight: overdue ? 700 : 400 }}>
-                      {t.due_date ? t.due_date.slice(0, 10) : '-'} {overdue && '⚠️'} {soon && '⏰'}
-                    </td>
+                    {!isCliente && <td onClick={() => navigate(`/tasks/${t.id}`)}>{t.assigned_name || <span style={{ color: '#6B6580' }}>-</span>}</td>}
+                    {!isCliente && <td onClick={() => navigate(`/tasks/${t.id}`)}><span className="stage-badge" style={{ background: pc.bg, color: pc.text }}>{t.priority === 'urgent' ? '🔴 ' : t.priority === 'high' ? '🟠 ' : ''}{t.priority}</span></td>}
+                    {isCliente ? (
+                      <td className="right" onClick={() => navigate(`/tasks/${t.id}`)} style={{ color: waitingDays === null ? '#6B6580' : waitingDays > 3 ? '#FF6B6B' : waitingDays > 1 ? '#FBBC04' : '#34C759', fontWeight: waitingDays && waitingDays > 3 ? 700 : 400 }}>
+                        {waitingDays === null ? '-' : waitingDays === 0 ? 'Hoje' : `${waitingDays}d`}
+                      </td>
+                    ) : (
+                      <td className="right" onClick={() => navigate(`/tasks/${t.id}`)} style={{ color: overdue ? '#FF6B6B' : soon ? '#FBBC04' : '#6B6580', fontWeight: overdue ? 700 : 400 }}>
+                        {t.due_date ? t.due_date.slice(0, 10) : '-'} {overdue && '⚠️'} {soon && '⏰'}
+                      </td>
+                    )}
                     <td className="right" onClick={() => navigate(`/tasks/${t.id}`)}><Clock size={10} /> {timeAgo(t.created_at)}</td>
                   </tr>
                 )
               })}
-              {tasks.length === 0 && <tr><td colSpan={isDono ? 8 : 7} style={{ textAlign: 'center', padding: 40, color: '#6B6580' }}>Nenhuma tarefa encontrada</td></tr>}
+              {tasks.length === 0 && <tr><td colSpan={isDono ? 8 : isCliente ? 4 : 7} style={{ textAlign: 'center', padding: 40, color: '#6B6580' }}>Nenhuma tarefa encontrada</td></tr>}
             </tbody>
           </table>
           {total > 30 && <div style={{ padding: 12, display: 'flex', justifyContent: 'center', gap: 8 }}><button className="btn btn-secondary btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Anterior</button><span style={{ fontSize: 12, color: '#A8A3B8', padding: '6px 12px' }}>Pag {page}/{Math.ceil(total / 30)}</span><button className="btn btn-secondary btn-sm" disabled={page >= Math.ceil(total / 30)} onClick={() => setPage(p => p + 1)}>Proxima</button></div>}
