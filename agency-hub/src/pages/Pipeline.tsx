@@ -34,7 +34,7 @@ export default function Pipeline() {
   const [showNew, setShowNew] = useState(false)
   const [showNewEditorial, setShowNewEditorial] = useState(false)
   const [newEditorial, setNewEditorial] = useState({ client_id: '', month_label: '', num_posts: '8', num_videos: '4', due_date: '', category_id: '' })
-  const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link_raw: '', recording_date: '', recording_time: '' })
+  const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link_raw: '', drive_link: '', approval_link: '', approval_text: '', publish_date: '', publish_objective: '', recording_date: '', recording_time: '' })
   const isDono = user?.role === 'dono' || user?.role === 'gerente'
 
   const loadData = useCallback(async () => {
@@ -73,7 +73,7 @@ export default function Pipeline() {
     if (!newTask.title || !newTask.client_id) return
     const recording_datetime = newTask.recording_date ? `${newTask.recording_date}T${newTask.recording_time || '09:00'}` : undefined
     await createTask({ ...newTask, client_id: +newTask.client_id, category_id: newTask.category_id ? +newTask.category_id : undefined, department_id: newTask.department_id ? +newTask.department_id : undefined, assigned_to: newTask.assigned_to.map(Number), recording_datetime } as any)
-    setShowNew(false); setNewTask({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [], due_date: '', priority: 'normal', drive_link_raw: '', recording_date: '', recording_time: '' }); loadData()
+    setShowNew(false); setNewTask({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [], due_date: '', priority: 'normal', drive_link_raw: '', drive_link: '', approval_link: '', approval_text: '', publish_date: '', publish_objective: '', recording_date: '', recording_time: '' }); loadData()
   }
 
   const handleCreateEditorial = async () => {
@@ -305,7 +305,19 @@ export default function Pipeline() {
             <div className="form-group"><label>Prazo</label><input className="input" type="date" value={newTask.due_date} onChange={e => setNewTask(p => ({ ...p, due_date: e.target.value }))} /></div>
             <div className="form-group"><label>Prioridade</label><select className="select" value={newTask.priority} onChange={e => setNewTask(p => ({ ...p, priority: e.target.value }))}><option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></div>
           </div>
-          <div className="form-group"><label>Link Drive (Arquivo Bruto)</label><input className="input" value={newTask.drive_link_raw} onChange={e => setNewTask(p => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
+          <div className="form-row">
+            <div className="form-group"><label>Link Drive (Arquivo Bruto)</label><input className="input" value={newTask.drive_link_raw} onChange={e => setNewTask(p => ({ ...p, drive_link_raw: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
+            <div className="form-group"><label>Link Drive (Arquivo Pronto)</label><input className="input" value={newTask.drive_link} onChange={e => setNewTask(p => ({ ...p, drive_link: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
+          </div>
+          <div style={{ padding: '14px 16px', background: 'rgba(245,166,35,0.04)', border: '1px solid rgba(245,166,35,0.12)', borderRadius: 10, marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>Conteudo para Aprovacao (opcional)</div>
+            <div className="form-group"><label>Link do arquivo finalizado</label><input className="input" value={newTask.approval_link} onChange={e => setNewTask(p => ({ ...p, approval_link: e.target.value }))} placeholder="Link do Drive com o arquivo pronto pra aprovacao..." /></div>
+            <div className="form-group"><label>Texto / Legenda</label><textarea className="input" rows={3} value={newTask.approval_text} onChange={e => setNewTask(p => ({ ...p, approval_text: e.target.value }))} placeholder="Legenda do post, texto da publicacao, descricao..." /></div>
+            <div className="form-row">
+              <div className="form-group"><label>Data da Publicacao</label><input className="input" type="date" value={newTask.publish_date} onChange={e => setNewTask(p => ({ ...p, publish_date: e.target.value }))} /></div>
+              <div className="form-group"><label>Objetivo da Publicacao</label><input className="input" value={newTask.publish_objective} onChange={e => setNewTask(p => ({ ...p, publish_objective: e.target.value }))} placeholder="Ex: Gerar leads, engajamento..." /></div>
+            </div>
+          </div>
           {/* Show recording date/time fields when dept is Captacao */}
           {(() => {
             const selDept = departments.find(d => String(d.id) === newTask.department_id)

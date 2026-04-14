@@ -135,7 +135,7 @@ router.get('/pipeline', (req, res) => {
 
 // Create task
 router.post('/', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
-  const { client_id, title, description, category_id, department_id, assigned_to, due_date, priority, drive_link, drive_link_raw, recording_datetime } = req.body
+  const { client_id, title, description, category_id, department_id, assigned_to, due_date, priority, drive_link, drive_link_raw, recording_datetime, approval_link, approval_text, publish_date, publish_objective } = req.body
   if (!client_id || !title) return res.status(400).json({ error: 'client_id e title obrigatorios' })
 
   // assigned_to can be a single ID or array of IDs
@@ -143,9 +143,9 @@ router.post('/', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
   const primaryAssignee = assigneeIds[0] || null
 
   const result = db.prepare(`
-    INSERT INTO tasks (client_id, category_id, department_id, title, description, due_date, priority, assigned_to, drive_link, drive_link_raw, created_by, recording_datetime)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(client_id, category_id || null, department_id || null, title, description || null, due_date || null, priority || 'normal', primaryAssignee, drive_link || null, drive_link_raw || null, req.user.id, recording_datetime || null)
+    INSERT INTO tasks (client_id, category_id, department_id, title, description, due_date, priority, assigned_to, drive_link, drive_link_raw, approval_link, approval_text, publish_date, publish_objective, created_by, recording_datetime)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(client_id, category_id || null, department_id || null, title, description || null, due_date || null, priority || 'normal', primaryAssignee, drive_link || null, drive_link_raw || null, approval_link || null, approval_text || null, publish_date || null, publish_objective || null, req.user.id, recording_datetime || null)
 
   setAssignees(result.lastInsertRowid, assigneeIds)
   db.prepare('INSERT INTO task_history (task_id, to_stage, user_id) VALUES (?, ?, ?)').run(result.lastInsertRowid, 'backlog', req.user.id)
