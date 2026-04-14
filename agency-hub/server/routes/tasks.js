@@ -52,7 +52,7 @@ router.get('/', (req, res) => {
   if (req.user.role === 'cliente') {
     // Cliente so ve tarefas voltadas pra ele: aguardando aprovacao, aprovadas, publicadas
     where.push('t.client_id = ?'); params.push(req.user.client_id)
-    where.push("t.stage IN ('aguardando_cliente', 'aprovado_cliente', 'programar_publicacao', 'concluido', 'rejeitado')")
+    where.push("t.stage IN ('aguardando_cliente', 'aprovado_cliente', 'programar_publicacao', 'concluido', 'rejeitado', 'solicitacao_pendente')")
   } else if (req.user.role === 'funcionario') {
     // See tasks assigned to them OR in their departments
     where.push('(t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?) OR t.department_id IN (SELECT department_id FROM user_departments WHERE user_id = ?))')
@@ -115,7 +115,7 @@ router.get('/pipeline', (req, res) => {
 
   if (req.user.role === 'cliente') {
     where.push('t.client_id = ?'); params.push(req.user.client_id)
-    where.push("t.stage IN ('aguardando_cliente', 'aprovado_cliente', 'programar_publicacao', 'concluido', 'rejeitado')")
+    where.push("t.stage IN ('aguardando_cliente', 'aprovado_cliente', 'programar_publicacao', 'concluido', 'rejeitado', 'solicitacao_pendente')")
   }
   else if (req.user.role === 'funcionario') { where.push('(t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?) OR t.department_id IN (SELECT department_id FROM user_departments WHERE user_id = ?))'); params.push(req.user.id, req.user.id) }
   if (client_id) { where.push('t.client_id = ?'); params.push(client_id) }
@@ -163,6 +163,65 @@ router.post('/', requireRole('dono', 'gerente', 'funcionario'), (req, res) => {
     notify(uid, 'task_assigned', 'Nova tarefa atribuida', `"${task.title}" foi atribuida a voce`, task.id, req.user.id)
   })
   res.json({ task })
+})
+
+// Client creates a task request (requires internal approval before becoming work)
+router.post('/request', (req, res) => {
+  if (req.user.role !== 'cliente') return res.status(403).json({ error: 'Apenas clientes podem criar solicitacoes' })
+  const { title, description } = req.body
+  if (!title) return res.status(400).json({ error: 'title obrigatorio' })
+  const result = db.prepare(`
+    INSERT INTO tasks (client_id, title, description, stage, priority, created_by, requested_by_client)
+    VALUES (?, ?, ?, 'solicitacao_pendente', 'normal', ?, 1)
+  `).run(req.user.client_id, title, description || null, req.user.id)
+  db.prepare('INSERT INTO task_history (task_id, to_stage, user_id, comment) VALUES (?, ?, ?, ?)').run(result.lastInsertRowid, 'solicitacao_pendente', req.user.id, 'Solicitacao criada pelo cliente')
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid)
+  broadcastSSE(task.client_id, 'task:created', task)
+  // Notify dono/gerente
+  notifyMany(getDonoUsers().map(d => d.id), 'client_request', 'Nova solicitacao de cliente', `"${task.title}"`, task.id, req.user.id)
+  res.json({ task })
+})
+
+// Approve client request (moves to backlog for team)
+router.post('/:id/approve-request', requireRole('dono', 'gerente'), (req, res) => {
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id)
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' })
+  if (task.stage !== 'solicitacao_pendente') return res.status(400).json({ error: 'Solicitacao nao esta pendente' })
+  db.prepare("UPDATE tasks SET stage = 'backlog', updated_at = datetime('now', '-3 hours') WHERE id = ?").run(task.id)
+  db.prepare('INSERT INTO task_history (task_id, from_stage, to_stage, user_id, comment) VALUES (?, ?, ?, ?, ?)').run(task.id, 'solicitacao_pendente', 'backlog', req.user.id, 'Solicitacao aprovada internamente')
+  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id)
+  broadcastSSE(updated.client_id, 'task:stage_changed', updated)
+  // Notify client user who created it
+  if (task.created_by !== req.user.id) notify(task.created_by, 'task_approved', 'Solicitacao aprovada', `"${task.title}" foi aprovada e entrara em producao`, task.id, req.user.id)
+  res.json({ task: updated })
+})
+
+// Reject client request (moves to rejeitado)
+router.post('/:id/reject-request', requireRole('dono', 'gerente'), (req, res) => {
+  const { comment } = req.body
+  if (!comment) return res.status(400).json({ error: 'comment obrigatorio' })
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id)
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' })
+  if (task.stage !== 'solicitacao_pendente') return res.status(400).json({ error: 'Solicitacao nao esta pendente' })
+  db.prepare("UPDATE tasks SET stage = 'rejeitado', updated_at = datetime('now', '-3 hours') WHERE id = ?").run(task.id)
+  db.prepare('INSERT INTO task_history (task_id, from_stage, to_stage, user_id, comment) VALUES (?, ?, ?, ?, ?)').run(task.id, 'solicitacao_pendente', 'rejeitado', req.user.id, comment)
+  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id)
+  broadcastSSE(updated.client_id, 'task:stage_changed', updated)
+  if (task.created_by !== req.user.id) notify(task.created_by, 'task_rejected', 'Solicitacao rejeitada', `"${task.title}": ${comment}`, task.id, req.user.id)
+  res.json({ task: updated })
+})
+
+// List pending client requests (for dono/gerente)
+router.get('/requests/pending', requireRole('dono', 'gerente'), (req, res) => {
+  const tasks = db.prepare(`
+    SELECT t.*, c.name as client_name, creator.name as created_by_name
+    FROM tasks t
+    LEFT JOIN clients c ON t.client_id = c.id
+    LEFT JOIN users creator ON t.created_by = creator.id
+    WHERE t.stage = 'solicitacao_pendente' AND t.requested_by_client = 1 AND t.is_active = 1
+    ORDER BY t.created_at DESC
+  `).all()
+  res.json({ tasks })
 })
 
 // Gravacoes calendar — list recording tasks for a given month

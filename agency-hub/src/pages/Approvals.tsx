@@ -2,32 +2,34 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
-import { fetchInternalApprovals, fetchClientApprovals, approveTask, rejectTask, apiFetch, type Task } from '../lib/api'
-import { CheckCircle, XCircle, ExternalLink, Building2, User, Clock, Eye } from 'lucide-react'
+import { fetchInternalApprovals, fetchClientApprovals, approveTask, rejectTask, fetchPendingRequests, approveTaskRequest, rejectTaskRequest, apiFetch, type Task } from '../lib/api'
+import { CheckCircle, XCircle, ExternalLink, Building2, User, Clock, Eye, MessageSquare } from 'lucide-react'
 
 export default function Approvals() {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const isDono = user?.role === 'dono'
+  const isDono = user?.role === 'dono' || user?.role === 'gerente'
   const isCliente = user?.role === 'cliente'
   const [internalTasks, setInternalTasks] = useState<Task[]>([])
   const [clientTasks, setClientTasks] = useState<Task[]>([])
+  const [requestTasks, setRequestTasks] = useState<Task[]>([])
   const [loading, setLoading] = useState(true)
   const [rejectId, setRejectId] = useState<number | null>(null)
   const [rejectReason, setRejectReason] = useState('')
-  const [activeTab, setActiveTab] = useState<'internal' | 'client'>(isDono ? 'internal' : 'client')
+  const [activeTab, setActiveTab] = useState<'internal' | 'client' | 'requests'>(isDono ? 'internal' : 'client')
 
-  const tasks = activeTab === 'internal' ? internalTasks : clientTasks
+  const tasks = activeTab === 'internal' ? internalTasks : activeTab === 'client' ? clientTasks : requestTasks
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       if (isDono) {
-        const [internal, client] = await Promise.all([
+        const [internal, client, requests] = await Promise.all([
           fetchInternalApprovals(),
           apiFetch<{ tasks: Task[] }>('/api/approvals/client').then(d => d.tasks),
+          fetchPendingRequests(),
         ])
-        setInternalTasks(internal); setClientTasks(client)
+        setInternalTasks(internal); setClientTasks(client); setRequestTasks(requests)
       } else if (isCliente) {
         setClientTasks(await fetchClientApprovals())
       }
@@ -38,8 +40,17 @@ export default function Approvals() {
   useEffect(() => { load() }, [load])
   useSSE('task:stage_changed', useCallback(() => load(), [load]))
 
-  const handleApprove = async (id: number) => { await approveTask(id); load() }
-  const handleReject = async () => { if (rejectId && rejectReason) { await rejectTask(rejectId, rejectReason); setRejectId(null); setRejectReason(''); load() } }
+  const handleApprove = async (id: number) => {
+    if (activeTab === 'requests') await approveTaskRequest(id)
+    else await approveTask(id)
+    load()
+  }
+  const handleReject = async () => {
+    if (!rejectId || !rejectReason) return
+    if (activeTab === 'requests') await rejectTaskRequest(rejectId, rejectReason)
+    else await rejectTask(rejectId, rejectReason)
+    setRejectId(null); setRejectReason(''); load()
+  }
 
   if (loading) return <div className="loading-container"><div className="spinner" /></div>
 
@@ -54,6 +65,9 @@ export default function Approvals() {
             </button>
             <button className={`btn btn-sm ${activeTab === 'client' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('client')}>
               Cliente ({clientTasks.length})
+            </button>
+            <button className={`btn btn-sm ${activeTab === 'requests' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('requests')}>
+              <MessageSquare size={12} /> Solicitacoes ({requestTasks.length})
             </button>
           </div>
         )}

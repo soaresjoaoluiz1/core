@@ -81,6 +81,10 @@ export const fetchPipelineTasks = (filters: Record<string, any> = {}) => {
   return apiFetch<{ stages: PipelineStage[]; tasks: Task[] }>(`/api/tasks/pipeline?${params}`)
 }
 export const createTask = (data: Partial<Task>) => apiFetch<{ task: Task }>('/api/tasks', { method: 'POST', body: JSON.stringify(data) }).then(d => d.task)
+export const createTaskRequest = (data: { title: string; description?: string }) => apiFetch<{ task: Task }>('/api/tasks/request', { method: 'POST', body: JSON.stringify(data) }).then(d => d.task)
+export const fetchPendingRequests = () => apiFetch<{ tasks: Task[] }>('/api/tasks/requests/pending').then(d => d.tasks)
+export const approveTaskRequest = (id: number) => apiFetch(`/api/tasks/${id}/approve-request`, { method: 'POST' })
+export const rejectTaskRequest = (id: number, comment: string) => apiFetch(`/api/tasks/${id}/reject-request`, { method: 'POST', body: JSON.stringify({ comment }) })
 export const createEditorialTask = (data: { client_id: number; month_label: string; num_posts?: number; num_videos?: number; due_date?: string; category_id?: number }) => apiFetch<{ task: Task; parent_id: number }>('/api/tasks/editorial', { method: 'POST', body: JSON.stringify(data) })
 export const confirmRecording = (parentId: number, data: { recording_datetime: string; capture_user_id?: number; edit_user_id?: number; design_user_id?: number }) => apiFetch<{ task: Task; gravacaoId: number; imagensId: number }>(`/api/tasks/${parentId}/confirm-recording`, { method: 'POST', body: JSON.stringify(data) })
 export const fetchTask = (id: number) => apiFetch<{ task: Task; comments: TaskComment[]; history: TaskHistory[]; attachments: TaskAttachment[]; timeEntries: TimeEntry[]; totalTimeSeconds: number; activeTimer: TimeEntry | null }>(`/api/tasks/${id}`)

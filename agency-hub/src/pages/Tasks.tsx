@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   fetchTasks, fetchClients, fetchDepartments, fetchUsers, fetchCategories, fetchStages,
-  createTask, bulkMoveTasks, bulkAssignTasks, formatNumber,
+  createTask, createTaskRequest, bulkMoveTasks, bulkAssignTasks, formatNumber,
   type Task, type Client, type Department, type User as UserT, type TaskCategory, type PipelineStage,
 } from '../lib/api'
 import { Plus, Clock, Building2, User, ExternalLink, Download, AlertTriangle, CheckSquare, Square, Users, ArrowRight, ArrowUpDown, Filter } from 'lucide-react'
@@ -55,6 +55,8 @@ export default function Tasks() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   // Modal
   const [showNew, setShowNew] = useState(false)
+  const [showRequest, setShowRequest] = useState(false)
+  const [newRequest, setNewRequest] = useState({ title: '', description: '' })
   const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link: '' })
   // Bulk
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -137,6 +139,7 @@ export default function Tasks() {
         <div className="page-header-actions">
           {isDono && <button className="btn btn-secondary btn-sm" onClick={handleExport}><Download size={14} /> Exportar</button>}
           {(isDono || isFunc) && <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}><Plus size={14} /> Nova Tarefa</button>}
+          {isCliente && <button className="btn btn-primary btn-sm" onClick={() => setShowRequest(true)}><Plus size={14} /> Nova Solicitacao</button>}
         </div>
       </div>
 
@@ -275,6 +278,20 @@ export default function Tasks() {
           </div>
           <div className="form-group"><label>Link Drive (Arquivo Bruto)</label><input className="input" value={newTask.drive_link} onChange={e => setNewTask(p => ({ ...p, drive_link: e.target.value }))} placeholder="https://drive.google.com/..." /></div>
           <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setShowNew(false)}>Cancelar</button><button className="btn btn-primary" onClick={handleCreate}>Criar Tarefa</button></div>
+        </div></div>
+      )}
+
+      {/* Client request modal */}
+      {showRequest && (
+        <div className="modal-overlay" onClick={() => setShowRequest(false)}><div className="modal" onClick={e => e.stopPropagation()}>
+          <h2>Nova Solicitacao</h2>
+          <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Sua solicitacao sera enviada para aprovacao da equipe. Apos aprovada, entrara em producao.</p>
+          <div className="form-group"><label>Titulo *</label><input className="input" value={newRequest.title} onChange={e => setNewRequest(p => ({ ...p, title: e.target.value }))} placeholder="Ex: Mudar bio do perfil..." /></div>
+          <div className="form-group"><label>Descricao</label><textarea className="input" rows={4} value={newRequest.description} onChange={e => setNewRequest(p => ({ ...p, description: e.target.value }))} placeholder="Detalhes da solicitacao..." /></div>
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setShowRequest(false)}>Cancelar</button>
+            <button className="btn btn-primary" disabled={!newRequest.title} onClick={async () => { await createTaskRequest({ title: newRequest.title, description: newRequest.description }); setShowRequest(false); setNewRequest({ title: '', description: '' }); loadTasks() }}>Enviar Solicitacao</button>
+          </div>
         </div></div>
       )}
 
