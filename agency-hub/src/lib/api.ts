@@ -34,6 +34,7 @@ export interface Task {
   subtask_kind?: string | null
   num_posts?: number | null; num_videos?: number | null
   recording_datetime?: string | null; briefing_content?: string | null
+  changes_requested?: string | null
   subtask_count?: number; subtask_done_count?: number
   assignees?: { user_id: number; name: string }[]
   subtasks?: Task[]
@@ -101,6 +102,7 @@ export const fetchInternalApprovals = () => apiFetch<{ tasks: Task[] }>('/api/ap
 export const fetchClientApprovals = () => apiFetch<{ tasks: Task[] }>('/api/approvals/client').then(d => d.tasks)
 export const approveTask = (id: number, comment?: string) => apiFetch(`/api/approvals/${id}/approve`, { method: 'POST', body: JSON.stringify({ comment }) })
 export const rejectTask = (id: number, comment: string) => apiFetch(`/api/approvals/${id}/reject`, { method: 'POST', body: JSON.stringify({ comment }) })
+export const requestChanges = (id: number, comment: string) => apiFetch(`/api/approvals/${id}/request-changes`, { method: 'POST', body: JSON.stringify({ comment }) })
 
 export const fetchDashboardStats = (days = 30) => apiFetch(`/api/dashboard/stats?days=${days}`)
 export const fetchDashboardTrends = (days = 30) => apiFetch<{ created: { date: string; count: number }[]; completed: { date: string; count: number }[] }>(`/api/dashboard/trends?days=${days}`)

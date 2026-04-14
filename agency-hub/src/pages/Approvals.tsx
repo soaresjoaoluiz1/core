@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSSE } from '../context/SSEContext'
-import { fetchInternalApprovals, fetchClientApprovals, approveTask, rejectTask, fetchPendingRequests, approveTaskRequest, rejectTaskRequest, apiFetch, type Task } from '../lib/api'
-import { CheckCircle, XCircle, ExternalLink, Building2, User, Clock, Eye, MessageSquare } from 'lucide-react'
+import { fetchInternalApprovals, fetchClientApprovals, approveTask, rejectTask, requestChanges, fetchPendingRequests, approveTaskRequest, rejectTaskRequest, apiFetch, type Task } from '../lib/api'
+import { CheckCircle, XCircle, ExternalLink, Building2, User, Clock, Eye, MessageSquare, RotateCcw } from 'lucide-react'
 
 export default function Approvals() {
   const { user } = useAuth()
@@ -16,6 +16,8 @@ export default function Approvals() {
   const [loading, setLoading] = useState(true)
   const [rejectId, setRejectId] = useState<number | null>(null)
   const [rejectReason, setRejectReason] = useState('')
+  const [changesId, setChangesId] = useState<number | null>(null)
+  const [changesText, setChangesText] = useState('')
   const [activeTab, setActiveTab] = useState<'internal' | 'client' | 'requests'>(isDono ? 'internal' : 'client')
 
   const tasks = activeTab === 'internal' ? internalTasks : activeTab === 'client' ? clientTasks : requestTasks
@@ -50,6 +52,11 @@ export default function Approvals() {
     if (activeTab === 'requests') await rejectTaskRequest(rejectId, rejectReason)
     else await rejectTask(rejectId, rejectReason)
     setRejectId(null); setRejectReason(''); load()
+  }
+  const handleRequestChanges = async () => {
+    if (!changesId || !changesText.trim()) return
+    await requestChanges(changesId, changesText)
+    setChangesId(null); setChangesText(''); load()
   }
 
   if (loading) return <div className="loading-container"><div className="spinner" /></div>
@@ -92,6 +99,7 @@ export default function Approvals() {
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
                   <button className="btn btn-primary btn-sm" onClick={() => handleApprove(t.id)}><CheckCircle size={14} /> Aprovar</button>
+                  {isCliente && activeTab !== 'requests' && <button className="btn btn-sm" style={{ background: '#FFB300', color: '#1a1625', border: 'none' }} onClick={() => setChangesId(t.id)}><RotateCcw size={14} /> Solicitar Alteracao</button>}
                   <button className="btn btn-danger btn-sm" onClick={() => setRejectId(t.id)}><XCircle size={14} /> Rejeitar</button>
                 </div>
               </div>
@@ -115,6 +123,23 @@ export default function Approvals() {
           <h2>Rejeitar Tarefa</h2>
           <div className="form-group"><label>Motivo *</label><textarea className="input" rows={3} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="O que precisa ser alterado..." /></div>
           <div className="modal-actions"><button className="btn btn-secondary" onClick={() => setRejectId(null)}>Cancelar</button><button className="btn btn-danger" onClick={handleReject} disabled={!rejectReason.trim()}>Rejeitar</button></div>
+        </div></div>
+      )}
+
+      {changesId && (
+        <div className="modal-overlay" onClick={() => setChangesId(null)}><div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+          <h2><RotateCcw size={18} style={{ marginRight: 8, verticalAlign: 'middle', color: '#FFB300' }} />Solicitar Alteracao</h2>
+          <p style={{ fontSize: 12, color: '#9B96B0', marginTop: -6, marginBottom: 16 }}>Descreva de forma <strong>clara e objetiva</strong> o que precisa ser alterado. A tarefa voltara pra revisao da equipe com suas instrucoes.</p>
+          <div className="form-group">
+            <label>O que deseja alterar? *</label>
+            <textarea className="input" rows={6} value={changesText} onChange={e => setChangesText(e.target.value)}
+              placeholder="Seja especifico. Indique o arquivo e o que deseja de forma objetiva e detalhada. Ex: No video 2, trocar a musica de fundo. No post 3, corrigir o nome do produto..."
+            />
+          </div>
+          <div className="modal-actions">
+            <button className="btn btn-secondary" onClick={() => setChangesId(null)}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleRequestChanges} disabled={!changesText.trim()}>Enviar Solicitacao</button>
+          </div>
         </div></div>
       )}
     </div>

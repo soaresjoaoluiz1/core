@@ -574,6 +574,10 @@ router.put('/:id/stage', (req, res) => {
   }
 
   db.prepare("UPDATE tasks SET stage = ?, updated_at = datetime('now', '-3 hours') WHERE id = ?").run(stage, task.id)
+  // Limpa changes_requested quando reenvia pra aprovacao
+  if (stage === 'aprovacao_interna' || stage === 'aguardando_cliente') {
+    db.prepare("UPDATE tasks SET changes_requested = NULL WHERE id = ?").run(task.id)
+  }
   db.prepare('INSERT INTO task_history (task_id, from_stage, to_stage, user_id, comment) VALUES (?, ?, ?, ?, ?)').run(task.id, task.stage, stage, req.user.id, comment || null)
 
   // Auto-start timer when entering em_producao

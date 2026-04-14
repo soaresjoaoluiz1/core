@@ -190,6 +190,17 @@ export default function TaskDetail() {
       <div className="lead-detail">
         {/* Left: Info */}
         <div>
+          {/* Changes requested banner (client asked for changes) */}
+          {(task as any).changes_requested && !isCliente && (
+            <div className="card" style={{ marginBottom: 12, background: 'linear-gradient(135deg, rgba(255,179,0,0.12), rgba(255,107,107,0.04))', border: '1px solid rgba(255,179,0,0.35)', borderLeft: '4px solid #FFB300' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#FFB300', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                🔄 Alteracao Solicitada pelo Cliente
+              </div>
+              <div style={{ fontSize: 14, color: '#F2F0F7', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{(task as any).changes_requested}</div>
+              <div style={{ marginTop: 10, fontSize: 11, color: '#9B96B0', fontStyle: 'italic' }}>Ao reenviar pra aprovacao, essa flag e limpa automaticamente.</div>
+            </div>
+          )}
+
           {/* Parent task summary (when viewing a subtask) */}
           {(task as any).parent && (
             <div className="card" style={{ marginBottom: 12, borderLeft: '3px solid #FFB300', background: 'rgba(255,179,0,0.04)' }}>

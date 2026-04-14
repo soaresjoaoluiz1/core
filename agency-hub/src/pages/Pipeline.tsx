@@ -236,6 +236,11 @@ export default function Pipeline() {
                           {task.priority === 'urgent' && <span style={{ fontSize: 9, background: '#FF6B6B20', color: '#FF6B6B', padding: '1px 6px', borderRadius: 4, fontWeight: 700, flexShrink: 0 }}>URGENTE</span>}
                           {task.priority === 'high' && <span style={{ fontSize: 9, background: '#FFAA8320', color: '#FFAA83', padding: '1px 6px', borderRadius: 4, fontWeight: 700, flexShrink: 0 }}>ALTA</span>}
                         </div>
+                        {(task as any).changes_requested && (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, background: 'rgba(255,179,0,0.18)', color: '#FFB300', padding: '2px 7px', borderRadius: 4, fontWeight: 700, marginTop: 4, marginBottom: 2, border: '1px solid rgba(255,179,0,0.3)' }}>
+                            🔄 ALTERACAO SOLICITADA
+                          </div>
+                        )}
                         {!groupByClient && (
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#A8A3B8', marginBottom: 4 }}>
                             <Building2 size={10} /> {task.client_name}

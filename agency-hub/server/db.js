@@ -316,6 +316,7 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN subtask_position INTEGER") } catch {
 try { db.exec("ALTER TABLE tasks ADD COLUMN subtask_kind TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN meeting_datetime TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN requested_by_client INTEGER DEFAULT 0") } catch {}
+try { db.exec("ALTER TABLE tasks ADD COLUMN changes_requested TEXT") } catch {}
 // Seed solicitacao_pendente stage for existing DBs
 try {
   const exists = db.prepare("SELECT id FROM pipeline_stages WHERE slug = 'solicitacao_pendente'").get()

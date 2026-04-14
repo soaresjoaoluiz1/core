@@ -70,6 +70,29 @@ router.post('/:id/approve', (req, res) => {
   res.json({ task: updated })
 })
 
+// Request changes (cliente specifies what needs to change)
+router.post('/:id/request-changes', (req, res) => {
+  const { comment } = req.body
+  if (!comment || !comment.trim()) return res.status(400).json({ error: 'Descreva o que precisa ser alterado' })
+  const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id)
+  if (!task) return res.status(404).json({ error: 'Tarefa nao encontrada' })
+  if (req.user.role !== 'cliente' || task.stage !== 'aguardando_cliente' || task.client_id !== req.user.client_id) {
+    return res.status(403).json({ error: 'Nao pode solicitar alteracao neste estado' })
+  }
+
+  db.prepare("UPDATE tasks SET stage = 'revisao_interna', changes_requested = ?, updated_at = datetime('now', '-3 hours') WHERE id = ?").run(comment, task.id)
+  db.prepare('INSERT INTO task_history (task_id, from_stage, to_stage, user_id, comment) VALUES (?, ?, ?, ?, ?)').run(task.id, task.stage, 'revisao_interna', req.user.id, `Alteracao solicitada: ${comment}`)
+  db.prepare('INSERT INTO task_comments (task_id, user_id, content, is_internal) VALUES (?, ?, ?, 0)').run(task.id, req.user.id, `🔄 Alteracao solicitada: ${comment}`)
+
+  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id)
+  broadcastSSE(updated.client_id, 'task:stage_changed', updated)
+  // Notify all assignees
+  const assignees = db.prepare('SELECT user_id FROM task_assignees WHERE task_id = ?').all(task.id)
+  assignees.forEach(a => notify(a.user_id, 'task_changes_requested', 'Cliente solicitou alteracao', `"${updated.title}": ${comment}`, updated.id, req.user.id))
+  notifyMany(getDonoUsers().map(d => d.id), 'task_changes_requested', 'Cliente solicitou alteracao', `"${updated.title}": ${comment}`, updated.id, req.user.id)
+  res.json({ task: updated })
+})
+
 // Reject task
 router.post('/:id/reject', (req, res) => {
   const { comment } = req.body
