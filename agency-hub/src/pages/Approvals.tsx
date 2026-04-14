@@ -82,12 +82,12 @@ export default function Approvals() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => navigate(`/tasks/${t.id}`)}>
                   <div style={{ fontSize: 17, fontWeight: 700, fontFamily: 'var(--font-heading)', marginBottom: 6 }}>{t.title}</div>
-                  {t.description && <div style={{ fontSize: 13, color: '#A8A3B8', marginBottom: 8, lineHeight: 1.5, maxHeight: 60, overflow: 'hidden' }}>{t.description}</div>}
+                  {t.description && !isCliente && <div style={{ fontSize: 13, color: '#A8A3B8', marginBottom: 8, lineHeight: 1.5, maxHeight: 60, overflow: 'hidden' }}>{t.description}</div>}
                   <div style={{ display: 'flex', gap: 12, fontSize: 12, color: '#A8A3B8', flexWrap: 'wrap' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Building2 size={12} />{t.client_name}</span>
-                    {t.department_name && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: t.department_color }} />{t.department_name}</span>}
-                    {t.assigned_name && <span><User size={12} /> {t.assigned_name}</span>}
-                    {t.due_date && <span style={{ color: new Date(t.due_date) < new Date() ? '#FF6B6B' : undefined }}><Clock size={12} /> {t.due_date.slice(0, 10)}</span>}
+                    {!isCliente && t.department_name && <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 6, height: 6, borderRadius: '50%', background: t.department_color }} />{t.department_name}</span>}
+                    {!isCliente && t.assigned_name && <span><User size={12} /> {t.assigned_name}</span>}
+                    {!isCliente && t.due_date && <span style={{ color: new Date(t.due_date) < new Date() ? '#FF6B6B' : undefined }}><Clock size={12} /> {t.due_date.slice(0, 10)}</span>}
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
