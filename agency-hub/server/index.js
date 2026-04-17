@@ -20,7 +20,7 @@ import dashboardRoutes from './routes/dashboard.js'
 import notificationRoutes from './routes/notifications.js'
 import financialRoutes from './routes/financial.js'
 import { authenticate } from './middleware/auth.js'
-import { addSSEClient, removeSSEClient, addSSEUserClient, removeSSEUserClient } from './sse.js'
+import { addSSEClient, removeSSEClient, addSSEUserClient, removeSSEUserClient, sendToUser } from './sse.js'
 
 const app = express()
 app.use(cors())
