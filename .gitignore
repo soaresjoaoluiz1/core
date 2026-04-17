@@ -11,7 +11,7 @@ temp/
 
 # Dashboards
 client-dashboard/node_modules/
-client-dashboard/dist/
+# client-dashboard/dist/ — included for deploy
 client-dashboard/server/data/
 crm-dashboard/node_modules/
 crm-dashboard/dist/

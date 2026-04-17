@@ -18,7 +18,7 @@ const META_TOKEN = process.env.META_ACCESS_TOKEN
 const KIWIFY_CLIENT_ID = process.env.KIWIFY_CLIENT_ID
 const KIWIFY_CLIENT_SECRET = process.env.KIWIFY_CLIENT_SECRET
 const KIWIFY_ACCOUNT_ID = process.env.KIWIFY_ACCOUNT_ID
-const PORT = 3001
+const PORT = process.env.PORT || 3004
 
 // --- Allowed clients (substring match against account/page name) ---
 // Covers both ad account names AND Facebook Page names (which link to IG)
@@ -999,6 +999,7 @@ app.get('/api/crm/:accountId', auth, async (req, res) => {
       // Invista format
       allLeads = []
       const SKIP_NAMES = ['Nome', 'DEZEMBRO', 'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO']
+      const DESQUALIFICADO_TERMS = ['sem resposta', 'sem retorno', 'não atendeu', 'nao atendeu', 'desqualificado', 'sem interesse', '']
       for (const row of rows) {
         if (row.length < 8) continue
         const dateStr = row[0]
@@ -1006,15 +1007,25 @@ app.get('/api/crm/:accountId', auth, async (req, res) => {
         if (!dateStr || !name || SKIP_NAMES.includes(name) || dateStr === 'Data') continue
         const date = parseBRDate(dateStr)
         if (!date) continue
+        const corretor = (row[7] || '').trim()
+        const corretorLower = corretor.toLowerCase()
+        // Qualificação: se tem nome de corretor real = qualificado, se sem resposta/vazio = desqualificado
+        let qualificacao = 'MEIO TERMO'
+        if (!corretor || DESQUALIFICADO_TERMS.some(t => t && corretorLower.includes(t))) {
+          qualificacao = 'NÃO'
+        } else if (corretor.length > 2 && !corretorLower.includes('sem ')) {
+          qualificacao = 'SIM'
+        }
         allLeads.push({
           date: dateStr,
           dateObj: date,
           interesse: row[2],
           nome: name,
           origem: row[6],
-          corretor: row[7],
+          corretor,
           visita: row[8] || '',
           estado: row[11] || '',
+          qualificacao,
         })
       }
     }
@@ -1686,6 +1697,44 @@ app.get('/api/google-ads/:customerId/hourly', auth, async (req, res) => {
   }
 })
 
+// Google Ads conversion actions breakdown
+app.get('/api/google-ads/:customerId/conversions', auth, async (req, res) => {
+  try {
+    const { customerId } = req.params
+    const { days = '30', since, until } = req.query
+    const ranges = getDateRanges(parseInt(days), since, until)
+
+    const results = await gaqlQuery(customerId, `
+      SELECT
+        segments.conversion_action_name,
+        segments.conversion_action_category,
+        metrics.conversions, metrics.conversions_value, metrics.cost_per_conversion
+      FROM campaign
+      WHERE segments.date BETWEEN '${ranges.current.since}' AND '${ranges.current.until}'
+        AND campaign.status != 'REMOVED'
+        AND metrics.conversions > 0
+    `)
+
+    const byAction = {}
+    results.forEach(r => {
+      const name = r.segments.conversionActionName || 'Desconhecido'
+      const category = r.segments.conversionActionCategory || ''
+      if (!byAction[name]) byAction[name] = { name, category, conversions: 0, value: 0, cost: 0 }
+      byAction[name].conversions += parseFloat(r.metrics.conversions || 0)
+      byAction[name].value += parseFloat(r.metrics.conversionsValue || 0)
+      byAction[name].cost += parseFloat(r.metrics.costPerConversion || 0)
+    })
+
+    const actions = Object.values(byAction)
+      .map(a => ({ ...a, conversions: Math.round(a.conversions) }))
+      .sort((a, b) => b.conversions - a.conversions)
+
+    res.json({ actions })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // =============================================
 // GOOGLE ANALYTICS 4 (GA4)
 // =============================================
@@ -2200,18 +2249,14 @@ app.get('/api/overview/:accountId', auth, async (req, res) => {
           // Campaign-level to count leads + messaging correctly (avoid double-counting)
           metaFetch(`/${accountId}/insights`, { fields: 'campaign_name,actions', time_range: JSON.stringify(ranges.current), level: 'campaign', limit: '500' }).catch(() => ({ data: [] })),
         ])
-        // Count leads correctly per campaign: use lead if campaign has it, otherwise use messaging
+        // Count leads and messaging separately per campaign (sum both)
         let campaignLeads = 0, campaignMessaging = 0
         for (const camp of (campaigns.data || [])) {
           const getAct = (type) => { const a = camp.actions?.find(x => x.action_type === type); return a ? parseFloat(a.value) : 0 }
           const lead = getAct('lead') || getAct('onsite_conversion.lead_grouped')
           const msg = getAct('onsite_conversion.messaging_conversation_started_7d')
-          if (lead > 0) {
-            campaignLeads += lead
-            // Don't count messaging from this campaign (it's duplicate of the lead form flow)
-          } else if (msg > 0) {
-            campaignMessaging += msg
-          }
+          if (lead > 0) campaignLeads += lead
+          if (msg > 0) campaignMessaging += msg
         }
         if (campaignLeads === 0 && campaignMessaging === 0) {
           // Fallback to account-level if campaign query returned no lead/messaging data
@@ -2308,14 +2353,36 @@ app.get('/api/overview/:accountId', auth, async (req, res) => {
       } catch { return { available: false } }
     })()
 
-    // 5. CRM
+    // 5. CRM (with qualification data)
     promises.crm = (async () => {
       try {
         const config = getCRMConfig(accountName)
         if (!config) return { available: false }
-        // We'll make a lightweight internal request to our own CRM endpoint logic
-        // Instead, just return that CRM is available and the type — the frontend already has CRM data
-        return { available: true, crmType: config.type }
+        // Fetch CRM qualification data inline
+        const sheetName = config.type === 'kellermann' ? 'ENTRADA DE LEADS' : 'LEADS'
+        const rows = await fetchSheetCSV(config.id, sheetName)
+        const cutoffCrm = new Date(); cutoffCrm.setDate(cutoffCrm.getDate() - days); cutoffCrm.setHours(0,0,0,0)
+        let crmLeads = []
+        if (config.type === 'invista' || (!config.type || config.type === 'invista')) {
+          const SKIP = ['Nome','DEZEMBRO','JANEIRO','FEVEREIRO','MARÇO','ABRIL','MAIO','JUNHO']
+          const DESQ = ['sem resposta','sem retorno','não atendeu','nao atendeu','desqualificado','sem interesse','']
+          for (const row of rows) {
+            if (row.length < 8) continue
+            const ds = row[0], nm = row[3]
+            if (!ds || !nm || SKIP.includes(nm) || ds === 'Data') continue
+            const dt = parseBRDate(ds)
+            if (!dt || dt < cutoffCrm) continue
+            const cor = (row[7] || '').trim(), corL = cor.toLowerCase()
+            let q = 'MEIO TERMO'
+            if (!cor || DESQ.some(t => t && corL.includes(t))) q = 'NÃO'
+            else if (cor.length > 2 && !corL.includes('sem ')) q = 'SIM'
+            crmLeads.push({ qualificacao: q })
+          }
+        }
+        const qualSim = crmLeads.filter(l => l.qualificacao === 'SIM').length
+        const qualNao = crmLeads.filter(l => l.qualificacao === 'NÃO').length
+        const qualMeio = crmLeads.filter(l => l.qualificacao === 'MEIO TERMO').length
+        return { available: true, crmType: config.type, qualSim, qualNao, qualMeio, crmTotal: crmLeads.length }
       } catch { return { available: false } }
     })()
 
@@ -2470,23 +2537,33 @@ app.get('/api/overview/:accountId', auth, async (req, res) => {
       }
     }
 
-    // CRM type available
+    // CRM with qualification
     if (results.crm?.available) {
-      overview.sources.crm = { available: true, crmType: results.crm.crmType }
+      overview.sources.crm = {
+        available: true, crmType: results.crm.crmType,
+        qualSim: results.crm.qualSim || 0,
+        qualNao: results.crm.qualNao || 0,
+        qualMeio: results.crm.qualMeio || 0,
+        crmTotal: results.crm.crmTotal || 0,
+      }
     }
 
-    // Totals
+    // Totals — leads = Meta leads + Meta messaging + Google Ads conversions
     const totalSpend = (overview.sources.meta?.spend || 0) + (overview.sources.gads?.spend || 0)
     const prevTotalSpend = (overview.sources.meta?.prevSpend || 0) + (overview.sources.gads?.prevSpend || 0)
-    // Total leads = Meta only (form leads + messaging). Google Ads conversions are not necessarily real leads.
-    const totalLeads = (overview.sources.meta?.leads || 0) + (overview.sources.meta?.messaging || 0)
-    const prevTotalLeads = (overview.sources.meta?.prevLeads || 0) + (overview.sources.meta?.prevMessaging || 0)
+    const metaConversions = Math.round((overview.sources.meta?.leads || 0) + (overview.sources.meta?.messaging || 0))
+    const prevMetaConversions = Math.round((overview.sources.meta?.prevLeads || 0) + (overview.sources.meta?.prevMessaging || 0))
+    const gadsConversions = Math.round(overview.sources.gads?.conversions || 0)
+    const prevGadsConversions = Math.round(overview.sources.gads?.prevConversions || 0)
+    const totalLeads = metaConversions + gadsConversions
+    const prevTotalLeads = prevMetaConversions + prevGadsConversions
     const totalRevenue = (overview.sources.kiwify?.revenue || 0) + (overview.sources.gads?.revenue || 0)
     const prevTotalRevenue = (overview.sources.kiwify?.prevRevenue || 0)
 
     overview.totals = {
       spend: totalSpend, prevSpend: prevTotalSpend,
       leads: totalLeads, prevLeads: prevTotalLeads,
+      metaConversions, prevMetaConversions, gadsConversions, prevGadsConversions,
       sessions: overview.sources.ga4?.sessions || 0, prevSessions: overview.sources.ga4?.prevSessions || 0,
       revenue: totalRevenue, prevRevenue: prevTotalRevenue,
       cpl: totalLeads > 0 ? totalSpend / totalLeads : 0,
@@ -2494,14 +2571,9 @@ app.get('/api/overview/:accountId', auth, async (req, res) => {
       roas: totalSpend > 0 && totalRevenue > 0 ? totalRevenue / totalSpend : 0,
     }
 
-    // Alerts
+    // Alerts (only bounce rate warning)
     overview.alerts = []
     if (overview.sources.ga4?.bounceRate > 70) overview.alerts.push({ type: 'warning', text: `Taxa de rejeicao do site alta: ${overview.sources.ga4.bounceRate.toFixed(1)}%` })
-    if (overview.totals.cpl > 0 && overview.totals.prevCpl > 0) {
-      const cplChange = ((overview.totals.cpl - overview.totals.prevCpl) / overview.totals.prevCpl) * 100
-      if (cplChange > 25) overview.alerts.push({ type: 'danger', text: `CPL subiu ${cplChange.toFixed(0)}% vs periodo anterior` })
-    }
-    if (overview.totals.roas > 0 && overview.totals.roas < 1) overview.alerts.push({ type: 'danger', text: `ROAS abaixo de 1 — operacao no prejuizo` })
 
     res.json(overview)
   } catch (err) {
@@ -2509,6 +2581,26 @@ app.get('/api/overview/:accountId', auth, async (req, res) => {
     res.status(500).json({ error: err.message })
   }
 })
+
+// ─── Production: serve built frontend ────────────────────────────
+import fs from 'fs'
+const distPath = resolve(__dirname, '../dist')
+if (fs.existsSync(distPath)) {
+  app.use('/core', (req, res, next) => {
+    if (req.path.startsWith('/assets/')) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+    } else if (req.path.endsWith('.html') || req.path === '/') {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+    }
+    next()
+  }, express.static(distPath))
+
+  app.get('/core/*', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+    res.sendFile(resolve(distPath, 'index.html'))
+  })
+  console.log('[Dros Core] Serving frontend from /core/')
+}
 
 app.listen(PORT, () => {
   console.log(`[Dros Dashboard API] Running on http://localhost:${PORT}`)

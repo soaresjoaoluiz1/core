@@ -6,7 +6,7 @@ async function apiFetch<T = any>(path: string): Promise<T> {
   })
   if (res.status === 401) {
     localStorage.removeItem('dros_token')
-    window.location.href = '/login'
+    window.location.href = '/core/login'
     throw new Error('Unauthorized')
   }
   if (!res.ok) throw new Error(`API error: ${res.status}`)
@@ -495,6 +495,12 @@ export async function fetchGAdsHourly(customerId: string, days = 30, since?: str
   return data.hourly || []
 }
 
+export interface GAdsConversionAction { name: string; category: string; conversions: number; value: number; cost: number }
+export async function fetchGAdsConversions(customerId: string, days = 30, since?: string, until?: string): Promise<GAdsConversionAction[]> {
+  const data = await apiFetch<{ actions: GAdsConversionAction[] }>(`/api/google-ads/${customerId}/conversions?${dateParams(days, since, until)}`)
+  return data.actions || []
+}
+
 // =============================================
 // GOOGLE ANALYTICS 4
 // =============================================
@@ -637,11 +643,12 @@ export interface OverviewData {
     ga4?: { sessions: number; prevSessions: number; users: number; prevUsers: number; pageviews: number; bounceRate: number; engagementRate: number; conversions: number; daily: { date: string; sessions: number }[] }
     instagram?: { followers: number; reach: number; interactions: number; username: string }
     kiwify?: { sales: number; prevSales: number; revenue: number; prevRevenue: number }
-    crm?: { available: boolean; crmType: string }
+    crm?: { available: boolean; crmType: string; qualSim: number; qualNao: number; qualMeio: number; crmTotal: number }
   }
   metaDaily?: { date: string; spend: number; leads: number }[]
   totals: {
     spend: number; prevSpend: number; leads: number; prevLeads: number
+    metaConversions: number; prevMetaConversions: number; gadsConversions: number; prevGadsConversions: number
     sessions: number; prevSessions: number; revenue: number; prevRevenue: number
     cpl: number; prevCpl: number; roas: number
   }
