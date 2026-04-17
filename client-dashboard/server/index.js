@@ -2595,7 +2595,7 @@ if (fs.existsSync(distPath)) {
     next()
   }, express.static(distPath))
 
-  app.get('/core/*', (req, res) => {
+  app.get('/core/{*path}', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
     res.sendFile(resolve(distPath, 'index.html'))
   })
