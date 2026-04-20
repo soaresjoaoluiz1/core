@@ -5,7 +5,7 @@ import { useSSE } from '../context/SSEContext'
 import { apiFetch } from '../lib/api'
 import {
   LayoutDashboard, Kanban, ListTodo, CheckCircle, Building2, UsersRound,
-  Layers, Tag, Briefcase, DollarSign, Settings, LogOut, Menu, X, ChevronsLeft, ChevronsRight, Video,
+  Layers, Tag, Briefcase, DollarSign, Settings, LogOut, Menu, X, ChevronsLeft, ChevronsRight, Video, ExternalLink,
 } from 'lucide-react'
 import NotificationBell from './NotificationBell'
 
@@ -85,6 +85,7 @@ export default function Sidebar() {
               <NavLink to="/services" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}><Briefcase size={16} /> Servicos</NavLink>
               <NavLink to="/financial" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}><DollarSign size={16} /> Financeiro</NavLink>
               <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} onClick={close}><Settings size={16} /> Configuracoes</NavLink>
+              <a href="/crm/" target="_blank" rel="noopener noreferrer" className="nav-item" style={{ textDecoration: 'none' }} onClick={close}><ExternalLink size={16} /> CRM</a>
             </>
           )}
         </nav>
