@@ -25,7 +25,7 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-logo">
-          <img src="/logo-dros.png" alt="Dros Agencia" className="login-logo-img" />
+          <img src={`${import.meta.env.BASE_URL}logo-dros.png`} alt="Dros Agencia" className="login-logo-img" />
         </div>
         <p className="login-subtitle">Painel de Performance</p>
 

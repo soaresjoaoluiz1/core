@@ -106,7 +106,7 @@ export default function Dashboard() {
     <div className="dashboard">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <img src="/logo-dros.png" alt="Dros" className="sidebar-logo" />
+          <img src={`${import.meta.env.BASE_URL}logo-dros.png`} alt="Dros" className="sidebar-logo" />
           <div className="subtitle">Painel de Performance</div>
         </div>
 
@@ -255,7 +255,7 @@ export default function Dashboard() {
 
             {/* Footer */}
             <div className="dashboard-footer">
-              <img src="/logo-dros.png" alt="Dros" style={{ height: 28 }} />
+              <img src={`${import.meta.env.BASE_URL}logo-dros.png`} alt="Dros" style={{ height: 28 }} />
               <span className="footer-update">
                 Ultima atualizacao: {lastUpdate?.toLocaleString('pt-BR') || '-'}
               </span>
