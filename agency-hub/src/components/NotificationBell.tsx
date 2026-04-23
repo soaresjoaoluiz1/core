@@ -69,7 +69,7 @@ export default function NotificationBell() {
         </button>
 
         {open && (
-          <div style={{ position: 'fixed', left: 70, top: 10, width: 340, maxHeight: 440, background: '#16102A', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, boxShadow: '0 12px 48px rgba(0,0,0,0.7)', zIndex: 9999, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ position: 'fixed', left: 70, top: 10, width: 340, maxHeight: 440, background: '#16102A', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, boxShadow: '0 12px 48px rgba(0,0,0,0.7)', zIndex: 99999, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontWeight: 700, fontSize: 14, fontFamily: 'var(--font-heading)' }}>Notificacoes</span>
               {count > 0 && <button onClick={handleReadAll} style={{ background: 'none', border: 'none', color: '#FFB300', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>Marcar todas lidas</button>}
