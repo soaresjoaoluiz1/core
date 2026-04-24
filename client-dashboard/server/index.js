@@ -2608,7 +2608,7 @@ if (fs.existsSync(distPath)) {
   console.log('[Dros Core] Serving frontend from /core/')
 }
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`[Dros Dashboard API] Running on http://localhost:${PORT}`)
   if (!GADS.refreshToken) {
     console.log(`[Google Ads] No refresh token. Visit http://localhost:${PORT}/api/google-ads/auth to authorize.`)
@@ -2617,3 +2617,6 @@ app.listen(PORT, () => {
     console.log(`[Kiwify] Not configured. Add KIWIFY_CLIENT_ID, KIWIFY_CLIENT_SECRET, KIWIFY_ACCOUNT_ID to .env`)
   }
 })
+
+// Keep process alive (ESM + Express 5 on Node 24 can exit prematurely)
+setInterval(() => {}, 1 << 30)
