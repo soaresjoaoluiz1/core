@@ -1313,7 +1313,7 @@ const GADS = {
   clientSecret: process.env.GOOGLE_ADS_CLIENT_SECRET,
   refreshToken: process.env.GOOGLE_ADS_REFRESH_TOKEN,
   loginCustomerId: (process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '').replace(/-/g, ''),
-  redirectUri: `http://localhost:${PORT}/api/google-ads/callback`,
+  redirectUri: process.env.GADS_REDIRECT_URI || `http://localhost:${PORT}/api/google-ads/callback`,
 }
 
 const GADS_API = 'https://googleads.googleapis.com/v20'
