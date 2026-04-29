@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { fetchClient, updateClient, fetchClientCredentials, createClientCredential, updateClientCredential, deleteClientCredential, fetchClientOnboard, fetchServices, fetchClientServices, updateClientServices, apiFetch, type Client, type ClientCredential, type User as UserT, type Service, type ClientService } from '../lib/api'
+import { fetchClient, updateClient, fetchClientCredentials, createClientCredential, updateClientCredential, deleteClientCredential, fetchClientOnboard, fetchServices, fetchClientServices, updateClientServices, apiFetch, generateApprovalToken, revokeApprovalToken, type Client, type ClientCredential, type User as UserT, type Service, type ClientService } from '../lib/api'
 import { ArrowLeft, Building2, ExternalLink, Plus, Edit3, Save, X, Trash2, Eye, EyeOff, Key, Users, Lock, ClipboardCopy, FileText, CheckCircle, Briefcase } from 'lucide-react'
 
 const PLATFORMS = ['Facebook', 'Instagram', 'Google Ads', 'Google Analytics', 'Google Meu Negocio', 'Meta Business', 'TikTok', 'LinkedIn', 'YouTube', 'Twitter/X', 'Pinterest', 'Kiwify', 'Hotmart', 'RD Station', 'Outro']
@@ -28,6 +28,8 @@ export default function ClientDetail() {
   const [servicesLoaded, setServicesLoaded] = useState(false)
   const [onboardLoading, setOnboardLoading] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [approvalCopied, setApprovalCopied] = useState(false)
+  const [approvalLoading, setApprovalLoading] = useState(false)
 
   const load = async () => {
     if (!id) return
@@ -90,6 +92,34 @@ export default function ClientDetail() {
   const onboardLink = client ? `${window.location.origin}${import.meta.env.BASE_URL}onboard/${(client as any).onboard_token}` : ''
   const copyLink = () => { navigator.clipboard.writeText(onboardLink); setLinkCopied(true); setTimeout(() => setLinkCopied(false), 2000) }
 
+  const approvalToken = (client as any)?.approval_token as string | null
+  const approvalLink = approvalToken ? `${window.location.origin}${import.meta.env.BASE_URL}approvals/${approvalToken}` : ''
+  const copyApprovalLink = () => { navigator.clipboard.writeText(approvalLink); setApprovalCopied(true); setTimeout(() => setApprovalCopied(false), 2000) }
+  const handleGenerateApprovalToken = async () => {
+    if (!id) return
+    setApprovalLoading(true)
+    try {
+      await generateApprovalToken(+id)
+      const data = await fetchClient(+id)
+      setClient(data.client)
+    } catch {} finally { setApprovalLoading(false) }
+  }
+  const handleRevokeApprovalToken = async () => {
+    if (!id) return
+    if (!confirm('Revogar o link? O cliente nao podera mais acessar essa URL.')) return
+    setApprovalLoading(true)
+    try {
+      await revokeApprovalToken(+id)
+      const data = await fetchClient(+id)
+      setClient(data.client)
+    } catch {} finally { setApprovalLoading(false) }
+  }
+  const shareApprovalWhatsApp = () => {
+    const phone = (client as any)?.contact_phone?.replace(/\D/g, '') || ''
+    const text = encodeURIComponent(`Ola ${client?.contact_name || ''}! Aqui esta o link para voce aprovar as tarefas: ${approvalLink}`)
+    window.open(`https://wa.me/${phone}?text=${text}`, '_blank')
+  }
+
   if (loading) return <div className="loading-container"><div className="spinner" /></div>
   if (!client) return <div className="empty-state"><h3>Cliente nao encontrado</h3></div>
 
@@ -125,6 +155,41 @@ export default function ClientDetail() {
                 </span></div>
                 {(client as any).monthly_fee > 0 && <div className="lead-info-row"><span className="lead-info-label">Mensalidade</span><span className="lead-info-value" style={{ color: '#FFB300', fontWeight: 600 }}>R$ {((client as any).monthly_fee || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></div>}
                 {(client as any).payment_day > 0 && <div className="lead-info-row"><span className="lead-info-label">Dia Vencimento</span><span className="lead-info-value">Dia {(client as any).payment_day}</span></div>}
+              </div>
+
+              {/* Link de Aprovacao Publica */}
+              <div style={{ marginTop: 20, padding: '14px 16px', background: 'linear-gradient(135deg, rgba(52,199,89,0.06), rgba(52,199,89,0.02))', border: '1px solid rgba(52,199,89,0.2)', borderRadius: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#34C759', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                  🔗 Link de Aprovacao Publica
+                </div>
+                <p style={{ fontSize: 12, color: '#9B96B0', marginBottom: 10 }}>O cliente acessa este link sem login e aprova as tarefas pendentes diretamente.</p>
+                {approvalToken ? (
+                  <>
+                    <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: 8, fontSize: 11, color: '#A8A3B8', wordBreak: 'break-all', fontFamily: 'monospace', marginBottom: 10 }}>
+                      {approvalLink}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button className="btn btn-primary btn-sm" onClick={copyApprovalLink}>
+                        📋 {approvalCopied ? 'Copiado!' : 'Copiar Link'}
+                      </button>
+                      {(client as any).contact_phone && (
+                        <button className="btn btn-secondary btn-sm" style={{ background: '#25D366', color: '#fff', border: 'none' }} onClick={shareApprovalWhatsApp}>
+                          💬 Enviar pelo WhatsApp
+                        </button>
+                      )}
+                      <button className="btn btn-secondary btn-sm" onClick={handleGenerateApprovalToken} disabled={approvalLoading} title="Gera um novo token e revoga o anterior">
+                        🔄 Regenerar Link
+                      </button>
+                      <button className="btn btn-danger btn-sm" onClick={handleRevokeApprovalToken} disabled={approvalLoading}>
+                        ✕ Revogar
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <button className="btn btn-primary btn-sm" onClick={handleGenerateApprovalToken} disabled={approvalLoading}>
+                    {approvalLoading ? 'Gerando...' : '+ Gerar Link de Aprovacao'}
+                  </button>
+                )}
               </div>
             </>
           ) : (

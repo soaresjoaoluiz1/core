@@ -13,7 +13,7 @@ export function formatNumber(n: number) { return n.toLocaleString('pt-BR') }
 export function formatBRL(n: number) { return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) }
 
 // Types
-export interface Client { id: number; name: string; slug: string; logo_url: string | null; contact_name: string | null; contact_email: string | null; contact_phone?: string | null; drive_folder?: string | null; is_active: number; task_count?: number; user_count?: number }
+export interface Client { id: number; name: string; slug: string; logo_url: string | null; contact_name: string | null; contact_email: string | null; contact_phone?: string | null; drive_folder?: string | null; is_active: number; approval_token?: string | null; onboard_token?: string | null; task_count?: number; user_count?: number }
 export interface ClientCredential { id: number; client_id: number; platform: string; login: string; password: string; observation: string | null; created_at: string }
 export interface TimeEntry { id: number; task_id: number; user_id: number; started_at: string; ended_at: string | null; duration_seconds: number; description: string | null; user_name: string }
 export interface Department { id: number; name: string; color: string; is_active: number; employee_count?: number; task_count?: number }
@@ -49,6 +49,8 @@ export interface TaskAttachment { id: number; task_id: number; url: string; file
 export const fetchClients = () => apiFetch<{ clients: Client[] }>('/api/clients').then(d => d.clients)
 export const createClient = (data: Partial<Client>) => apiFetch<{ client: Client }>('/api/clients', { method: 'POST', body: JSON.stringify(data) }).then(d => d.client)
 export const fetchClient = (id: number) => apiFetch<{ client: Client; users: User[]; tasksByStage: any[] }>(`/api/clients/${id}`)
+export const generateApprovalToken = (clientId: number) => apiFetch<{ approval_token: string }>(`/api/clients/${clientId}/approval-token`, { method: 'POST' })
+export const revokeApprovalToken = (clientId: number) => apiFetch(`/api/clients/${clientId}/approval-token`, { method: 'DELETE' })
 export const updateClient = (id: number, data: Partial<Client>) => apiFetch(`/api/clients/${id}`, { method: 'PUT', body: JSON.stringify(data) })
 
 export const fetchDepartments = () => apiFetch<{ departments: Department[] }>('/api/departments').then(d => d.departments)

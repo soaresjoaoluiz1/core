@@ -19,6 +19,7 @@ import Services from './pages/Services'
 import Financial from './pages/Financial'
 import Gravacoes from './pages/Gravacoes'
 import Onboard from './pages/Onboard'
+import PublicApprovals from './pages/PublicApprovals'
 import TimerCheck from './components/TimerCheck'
 import { ToastProvider } from './components/Toast'
 
@@ -71,6 +72,7 @@ export default function App() {
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/onboard/:token" element={<Onboard />} />
+        <Route path="/approvals/:token" element={<PublicApprovals />} />
         <Route path="/*" element={<AuthProvider><ToastProvider><AppRoutes /></ToastProvider></AuthProvider>} />
       </Routes>
     </BrowserRouter>

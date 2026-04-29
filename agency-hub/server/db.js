@@ -301,6 +301,8 @@ try { db.exec("ALTER TABLE tasks ADD COLUMN approval_text TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN publish_date TEXT") } catch {}
 try { db.exec("ALTER TABLE tasks ADD COLUMN publish_objective TEXT") } catch {}
 try { db.exec("ALTER TABLE clients ADD COLUMN onboard_token TEXT") } catch {}
+try { db.exec("ALTER TABLE clients ADD COLUMN approval_token TEXT") } catch {}
+try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_approval_token ON clients(approval_token)") } catch {}
 try { db.exec("ALTER TABLE client_services ADD COLUMN config TEXT DEFAULT '{}'") } catch {}
 try { db.exec("ALTER TABLE services ADD COLUMN fields TEXT DEFAULT '[]'") } catch {}
 try { db.exec("ALTER TABLE clients ADD COLUMN monthly_fee REAL DEFAULT 0") } catch {}

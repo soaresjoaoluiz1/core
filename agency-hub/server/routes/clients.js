@@ -71,6 +71,20 @@ router.get('/:id/credentials', requireRole('dono', 'gerente'), (req, res) => {
   res.json({ credentials })
 })
 
+// Approval token — gerar (revoga o anterior) ou revogar
+router.post('/:id/approval-token', requireRole('dono', 'gerente'), (req, res) => {
+  const client = db.prepare('SELECT id FROM clients WHERE id = ?').get(req.params.id)
+  if (!client) return res.status(404).json({ error: 'Cliente nao encontrado' })
+  const token = randomBytes(20).toString('hex')
+  db.prepare('UPDATE clients SET approval_token = ? WHERE id = ?').run(token, req.params.id)
+  res.json({ approval_token: token })
+})
+
+router.delete('/:id/approval-token', requireRole('dono', 'gerente'), (req, res) => {
+  db.prepare('UPDATE clients SET approval_token = NULL WHERE id = ?').run(req.params.id)
+  res.json({ ok: true })
+})
+
 router.post('/:id/credentials', requireRole('dono', 'gerente'), (req, res) => {
   const { platform, login, password, observation } = req.body
   if (!platform || !login || !password) return res.status(400).json({ error: 'platform, login e password obrigatorios' })
