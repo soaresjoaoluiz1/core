@@ -6,7 +6,18 @@ import { fetchPipelineTasks, fetchClients, fetchDepartments, fetchUsers, fetchCa
 import { Clock, Building2, User, ExternalLink, ChevronDown, ChevronRight, ArrowRight, Search, AlertTriangle, Plus, Layers } from 'lucide-react'
 import { useToast } from '../components/Toast'
 
-function timeAgo(d: string) { const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000); if (m < 60) return `${m}m`; const h = Math.floor(m / 60); if (h < 24) return `${h}h`; return `${Math.floor(h / 24)}d` }
+function timeAgo(d: string) {
+  const [datePart, timePartRaw] = d.split(/[ T]/)
+  const [y, mo, da] = datePart.split('-').map(Number)
+  const [h, mi, s] = ((timePartRaw || '00:00:00').split(':').map(Number)) as [number, number, number]
+  const utcMs = Date.UTC(y, (mo || 1) - 1, da || 1, (h || 0) + 3, mi || 0, s || 0)
+  const m = Math.floor((Date.now() - utcMs) / 60000)
+  if (m < 0) return 'agora'
+  if (m < 60) return `${m}m`
+  const hr = Math.floor(m / 60)
+  if (hr < 24) return `${hr}h`
+  return `${Math.floor(hr / 24)}d`
+}
 function todayStr() { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}` }
 function isOverdue(d: string | null) { return d ? d.slice(0, 10) < todayStr() : false }
 function useIsMobile() { const [m, setM] = useState(window.innerWidth <= 640); useEffect(() => { const h = () => setM(window.innerWidth <= 640); window.addEventListener('resize', h); return () => window.removeEventListener('resize', h) }, []); return m }
