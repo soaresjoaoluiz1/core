@@ -38,7 +38,8 @@ export default function Pipeline() {
   const [showNewEditorial, setShowNewEditorial] = useState(false)
   const [newEditorial, setNewEditorial] = useState({ client_id: '', month_label: '', num_posts: '8', num_videos: '4', due_date: '', category_id: '' })
   const [newTask, setNewTask] = useState({ title: '', description: '', client_id: '', category_id: '', department_id: '', assigned_to: [] as string[], due_date: '', priority: 'normal', drive_link_raw: '', drive_link: '', approval_link: '', approval_text: '', publish_date: '', publish_objective: '', recording_date: '', recording_time: '' })
-  const isDono = user?.role === 'dono' || user?.role === 'gerente'
+  const isDono = user?.role === 'dono'
+  const isFunc = user?.role === 'funcionario' || user?.role === 'gerente'
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -53,7 +54,7 @@ export default function Pipeline() {
   }, [filterClient, filterDept, isMobile])
 
   useEffect(() => { loadData() }, [loadData])
-  useEffect(() => { if (isDono || user?.role === 'funcionario') { fetchClients().then(setClients).catch(() => {}); fetchDepartments().then(setDepartments).catch(() => {}); fetchUsers().then(u => setUsers(u as any)).catch(() => {}); fetchCategories().then(setCategories).catch(() => {}) } }, [isDono, user?.role])
+  useEffect(() => { if (isDono || isFunc) { fetchClients().then(setClients).catch(() => {}); fetchDepartments().then(setDepartments).catch(() => {}); fetchUsers().then(u => setUsers(u as any)).catch(() => {}); fetchCategories().then(setCategories).catch(() => {}) } }, [isDono, isFunc])
   const [allUsers, setUsers] = useState<UserT[]>([])
 
   useSSE('task:created', useCallback(() => loadData(), [loadData]))
@@ -173,7 +174,7 @@ export default function Pipeline() {
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1>Pipeline</h1>
-          {(isDono || user?.role === 'funcionario') && <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}><Plus size={14} /> Nova Tarefa</button>}
+          {(isDono || isFunc) && <button className="btn btn-primary btn-sm" onClick={() => setShowNew(true)}><Plus size={14} /> Nova Tarefa</button>}
           {isDono && <button className="btn btn-secondary btn-sm" onClick={() => setShowNewEditorial(true)}><Layers size={14} /> Linha Editorial</button>}
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

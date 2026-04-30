@@ -53,8 +53,8 @@ router.get('/', (req, res) => {
     // Cliente so ve tarefas voltadas pra ele: aguardando aprovacao, aprovadas, publicadas
     where.push('t.client_id = ?'); params.push(req.user.client_id)
     where.push("t.stage IN ('aguardando_cliente', 'aprovado_cliente', 'programar_publicacao', 'concluido', 'rejeitado', 'solicitacao_pendente')")
-  } else if (req.user.role === 'funcionario') {
-    // See tasks assigned to them OR in their departments
+  } else if (req.user.role === 'funcionario' || req.user.role === 'gerente') {
+    // Gerente comporta como funcionario em tarefas: ve so as suas + do seu departamento
     where.push('(t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?) OR t.department_id IN (SELECT department_id FROM user_departments WHERE user_id = ?))')
     params.push(req.user.id, req.user.id)
   }
@@ -117,7 +117,7 @@ router.get('/pipeline', (req, res) => {
     where.push('t.client_id = ?'); params.push(req.user.client_id)
     where.push("t.stage IN ('aguardando_cliente', 'aprovado_cliente', 'programar_publicacao', 'concluido', 'rejeitado', 'solicitacao_pendente')")
   }
-  else if (req.user.role === 'funcionario') { where.push('(t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?) OR t.department_id IN (SELECT department_id FROM user_departments WHERE user_id = ?))'); params.push(req.user.id, req.user.id) }
+  else if (req.user.role === 'funcionario' || req.user.role === 'gerente') { where.push('(t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?) OR t.department_id IN (SELECT department_id FROM user_departments WHERE user_id = ?))'); params.push(req.user.id, req.user.id) }
   if (client_id) { where.push('t.client_id = ?'); params.push(client_id) }
   if (department_id) { where.push('t.department_id = ?'); params.push(department_id) }
   if (assigned_to) { where.push('t.id IN (SELECT task_id FROM task_assignees WHERE user_id = ?)'); params.push(assigned_to) }

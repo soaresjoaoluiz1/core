@@ -30,7 +30,7 @@ export default function Tasks() {
   const navigate = useNavigate()
   const { toast } = useToast()
   const isDono = user?.role === 'dono'
-  const isFunc = user?.role === 'funcionario'
+  const isFunc = user?.role === 'funcionario' || user?.role === 'gerente'
   const isCliente = user?.role === 'cliente'
   const [saving, setSaving] = useState(false)
   const [tasks, setTasks] = useState<Task[]>([])
