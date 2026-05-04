@@ -20,7 +20,7 @@ import KiwifyView from '../components/KiwifyView'
 import GoogleAdsView from '../components/GoogleAdsView'
 import AnalyticsView from '../components/AnalyticsView'
 import OverviewView from '../components/OverviewView'
-import { Search, LogOut, BarChart3, Instagram, LineChart, LayoutDashboard, Calendar } from 'lucide-react'
+import { Search, LogOut, BarChart3, Instagram, LineChart, LayoutDashboard, Calendar, ChevronsLeft, ChevronsRight } from 'lucide-react'
 
 const DATE_OPTIONS = [
   { label: '7 dias', value: '7d' },
@@ -48,6 +48,8 @@ export default function Dashboard() {
   const [loadingData, setLoadingData] = useState(false)
   const [search, setSearch] = useState('')
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('core_sidebar_collapsed') === '1')
+  const toggleSidebar = () => setSidebarCollapsed(p => { const v = !p; localStorage.setItem('core_sidebar_collapsed', v ? '1' : '0'); return v })
 
   useEffect(() => {
     fetchAccounts()
@@ -104,16 +106,18 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard">
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
           <img src={`${import.meta.env.BASE_URL}logo-dros.png`} alt="Dros" className="sidebar-logo" />
-          <div className="subtitle">Painel de Performance</div>
+          {!sidebarCollapsed && <div className="subtitle">Painel de Performance</div>}
         </div>
 
-        <div className="sidebar-search">
-          <Search size={14} className="search-icon" />
-          <input type="text" placeholder="Buscar conta..." value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
+        {!sidebarCollapsed && (
+          <div className="sidebar-search">
+            <Search size={14} className="search-icon" />
+            <input type="text" placeholder="Buscar conta..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+        )}
         <div className="account-list">
           {loadingAccounts ? (
             <div className="loading-container" style={{ minHeight: 200 }}><div className="spinner" /></div>
@@ -125,9 +129,12 @@ export default function Dashboard() {
         </div>
 
         <div className="sidebar-footer">
-          <div className="user-name">{user?.name}</div>
+          {!sidebarCollapsed && <div className="user-name">{user?.name}</div>}
           <button className="logout-btn" onClick={logout} title="Sair"><LogOut size={16} /></button>
         </div>
+        <button className="sidebar-collapse-btn" onClick={toggleSidebar} title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}>
+          {sidebarCollapsed ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}
+        </button>
       </aside>
 
       <main className="main-content">
