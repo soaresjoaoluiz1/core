@@ -1049,15 +1049,18 @@ export default function CRMView({ accountId, accountName, days, adSpend }: Props
         </div>
       </section>
 
-      {(cplReal > 0 || cpVisitaReal > 0 || data.semCorretor > 0) && (
-        <section className="dash-section">
-          <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-            {cplReal > 0 && <Stat label="CPL Real (Meta→CRM)" value={formatBRL(cplReal)} sub={`${data.adsLeads} leads de Ads`} icon={<TrendingUp size={16} />} color="#FFB300" />}
-            {cpVisitaReal > 0 && <Stat label="Custo por Visita Real" value={formatBRL(cpVisitaReal)} sub="Gasto Ads / Visitas CRM" icon={<Eye size={16} />} color="#FFAA83" />}
-            {data.semCorretor > 0 && <Stat label="Sem Corretor" value={data.semCorretor} sub={`${((data.semCorretor / data.total) * 100).toFixed(0)}% nao distribuidos`} icon={<UserX size={16} />} color="#FF6B6B" alert={data.semCorretor > data.total * 0.1 ? 'Leads nao distribuidos!' : undefined} />}
-          </div>
-        </section>
-      )}
+      <section className="dash-section">
+        <div className="section-title">Qualificação & Custos Reais</div>
+        <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+          {data.qualSim > 0 && <Stat label="Qualificados" value={data.qualSim} sub={`${data.total > 0 ? ((data.qualSim / data.total) * 100).toFixed(0) : 0}% dos leads`} icon={<UserCheck size={16} />} color="#34C759" />}
+          {data.qualNao > 0 && <Stat label="Desqualificados" value={data.qualNao} sub={`${data.total > 0 ? ((data.qualNao / data.total) * 100).toFixed(0) : 0}% sem resposta/retorno`} icon={<UserX size={16} />} color="#FF6B6B" />}
+          {data.qualMeio > 0 && <Stat label="Em Andamento" value={data.qualMeio} sub={`${data.total > 0 ? ((data.qualMeio / data.total) * 100).toFixed(0) : 0}% do total`} icon={<Users size={16} />} color="#FFAA83" />}
+          {adSpend && data.qualSim > 0 && <Stat label="CPL Real (Qualificado)" value={formatBRL(adSpend / data.qualSim)} sub={`${formatBRL(adSpend)} / ${data.qualSim} qualificados`} icon={<TrendingUp size={16} />} color="#34C759" />}
+          {cplReal > 0 && <Stat label="CPL Geral (Meta→CRM)" value={formatBRL(cplReal)} sub={`${data.adsLeads} leads de Ads`} icon={<TrendingUp size={16} />} color="#FFB300" />}
+          {cpVisitaReal > 0 && <Stat label="Custo por Visita" value={formatBRL(cpVisitaReal)} sub="Gasto Ads / Visitas CRM" icon={<Eye size={16} />} color="#FFAA83" />}
+          {data.semCorretor > 0 && <Stat label="Sem Corretor" value={data.semCorretor} sub={`${((data.semCorretor / data.total) * 100).toFixed(0)}% nao distribuidos`} icon={<UserX size={16} />} color="#FF6B6B" alert={data.semCorretor > data.total * 0.1 ? 'Leads nao distribuidos!' : undefined} />}
+        </div>
+      </section>
 
       <section className="dash-section">
         <div className="charts-grid">

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import {
   fetchGAdsAccounts, fetchGAdsCampaigns, fetchGAdsDaily, fetchGAdsKeywords,
-  fetchGAdsSearchTerms, fetchGAdsDevices, fetchGAdsHourly,
+  fetchGAdsSearchTerms, fetchGAdsDevices, fetchGAdsHourly, fetchGAdsConversions,
   formatBRL, formatNumber, pctChange,
   type GAdsAccount, type GAdsCampaignsResponse, type GAdsDaily,
-  type GAdsKeyword, type GAdsSearchTerm, type GAdsDevice, type GAdsHourly,
+  type GAdsKeyword, type GAdsSearchTerm, type GAdsDevice, type GAdsHourly, type GAdsConversionAction,
 } from '../lib/api'
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -75,6 +75,7 @@ export default function GoogleAdsView({ accountName, days, since, until }: Props
   const [searchTerms, setSearchTerms] = useState<GAdsSearchTerm[]>([])
   const [devices, setDevices] = useState<GAdsDevice[]>([])
   const [hourly, setHourly] = useState<GAdsHourly[]>([])
+  const [convActions, setConvActions] = useState<GAdsConversionAction[]>([])
   const [loading, setLoading] = useState(true)
   const [noAccount, setNoAccount] = useState(false)
 
@@ -106,13 +107,15 @@ export default function GoogleAdsView({ accountName, days, since, until }: Props
           fetchGAdsSearchTerms(match.id, days, since, until).catch(() => []),
           fetchGAdsDevices(match.id, days, since, until).catch(() => []),
           fetchGAdsHourly(match.id, days, since, until).catch(() => []),
-        ]).then(([camp, d, kw, st, dev, hr]) => {
+          fetchGAdsConversions(match.id, days, since, until).catch(() => []),
+        ]).then(([camp, d, kw, st, dev, hr, conv]) => {
           setCampaigns(camp)
           setDaily(d as GAdsDaily[])
           setKeywords(kw as GAdsKeyword[])
           setSearchTerms(st as GAdsSearchTerm[])
           setDevices(dev as GAdsDevice[])
           setHourly(hr as GAdsHourly[])
+          setConvActions(conv as GAdsConversionAction[])
         })
       })
       .catch(() => setNoAccount(true))
@@ -320,6 +323,44 @@ export default function GoogleAdsView({ accountName, days, since, until }: Props
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Conversion Actions Breakdown */}
+      {convActions.length > 0 && (
+        <section className="dash-section">
+          <div className="section-title">Detalhamento de Conversoes</div>
+          <div className="table-card">
+            <div style={{ overflowX: 'auto' }}>
+              <table className="campaign-table">
+                <thead>
+                  <tr>
+                    <th>Acao de Conversao</th>
+                    <th className="right">Conversoes</th>
+                    <th className="right">% do Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {convActions.map((a, i) => {
+                    const totalConv = convActions.reduce((s, x) => s + x.conversions, 0)
+                    const pct = totalConv > 0 ? (a.conversions / totalConv) * 100 : 0
+                    return (
+                      <tr key={i}>
+                        <td className="name">{a.name}</td>
+                        <td className="right" style={{ fontWeight: 600, color: '#34A853' }}>{formatNumber(a.conversions)}</td>
+                        <td className="right">{pct.toFixed(1)}%</td>
+                      </tr>
+                    )
+                  })}
+                  <tr style={{ borderTop: '1px solid rgba(255,255,255,0.1)', fontWeight: 700 }}>
+                    <td>Total</td>
+                    <td className="right" style={{ color: '#34A853' }}>{formatNumber(convActions.reduce((s, x) => s + x.conversions, 0))}</td>
+                    <td className="right">100%</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
