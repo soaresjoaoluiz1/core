@@ -2390,17 +2390,27 @@ app.get('/api/overview/:accountId', auth, async (req, res) => {
         let crmLeads = []
         if (config.type === 'invista' || (!config.type || config.type === 'invista')) {
           const SKIP = ['Nome','DEZEMBRO','JANEIRO','FEVEREIRO','MARÇO','ABRIL','MAIO','JUNHO']
-          const DESQ = ['sem resposta','sem retorno','não atendeu','nao atendeu','desqualificado','sem interesse','']
+          const VALID_ORIGENS = ['site - invistaimoveissm.com.br', 'facebook', 'instagram', 'whatsapp', 'google ads', 'chat', 'ig']
+          const CORRETOR_DESQUAL = ['sem resposta', 'agenciamento', 'sem retorno', 'so informacao', 'capao da canoa']
+          const ESTADO_DESQUAL = ['sem resposta', 'sem evolucao', 'negativa']
+          const stripAcc = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
           for (const row of rows) {
             if (row.length < 8) continue
             const ds = row[0], nm = row[3]
             if (!ds || !nm || SKIP.includes(nm) || ds === 'Data') continue
             const dt = parseBRDate(ds)
             if (!dt || dt < cutoffCrm) continue
-            const cor = (row[7] || '').trim(), corL = cor.toLowerCase()
-            let q = 'MEIO TERMO'
-            if (!cor || DESQ.some(t => t && corL.includes(t))) q = 'NÃO'
-            else if (cor.length > 2 && !corL.includes('sem ')) q = 'SIM'
+            // Filtro 1: origem exata
+            const orig = (row[6] || '').trim()
+            if (!VALID_ORIGENS.includes(orig.toLowerCase())) continue
+            const cor = (row[7] || '').trim()
+            const est = (row[11] || '').trim()
+            const corNorm = stripAcc(cor)
+            const estNorm = stripAcc(est)
+            // Filtro 2 (corretor) e 3 (estado)
+            let q = 'SIM'
+            if (!cor || CORRETOR_DESQUAL.some(t => corNorm.includes(t))) q = 'NÃO'
+            else if (ESTADO_DESQUAL.some(t => estNorm.includes(t))) q = 'NÃO'
             crmLeads.push({ qualificacao: q })
           }
         }
