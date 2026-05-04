@@ -1013,7 +1013,13 @@ app.get('/api/crm/:accountId', auth, async (req, res) => {
       // Invista format
       allLeads = []
       const SKIP_NAMES = ['Nome', 'DEZEMBRO', 'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO']
-      const DESQUALIFICADO_TERMS = ['sem resposta', 'sem retorno', 'não atendeu', 'nao atendeu', 'desqualificado', 'sem interesse', '']
+      // Origens validas (match EXATO, case-insensitive). Resto e ignorado completamente.
+      const VALID_ORIGENS = ['site - invistaimoveissm.com.br', 'facebook', 'instagram', 'whatsapp', 'google ads', 'chat', 'ig']
+      // Corretor desqualifica (match PARCIAL, ignora acentos). Vazio tambem desqualifica.
+      const CORRETOR_DESQUAL = ['sem resposta', 'agenciamento', 'sem retorno', 'so informacao', 'capao da canoa']
+      // Coluna L "ge" desqualifica (match PARCIAL, ignora acentos)
+      const ESTADO_DESQUAL = ['sem resposta', 'sem evolucao', 'negativa']
+      const stripAccents = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
       for (const row of rows) {
         if (row.length < 8) continue
         const dateStr = row[0]
@@ -1021,24 +1027,29 @@ app.get('/api/crm/:accountId', auth, async (req, res) => {
         if (!dateStr || !name || SKIP_NAMES.includes(name) || dateStr === 'Data') continue
         const date = parseBRDate(dateStr)
         if (!date) continue
+        // Filtro 1: origem deve bater EXATO com lista valida
+        const origem = (row[6] || '').trim()
+        if (!VALID_ORIGENS.includes(origem.toLowerCase())) continue
         const corretor = (row[7] || '').trim()
-        const corretorLower = corretor.toLowerCase()
-        // Qualificação: se tem nome de corretor real = qualificado, se sem resposta/vazio = desqualificado
-        let qualificacao = 'MEIO TERMO'
-        if (!corretor || DESQUALIFICADO_TERMS.some(t => t && corretorLower.includes(t))) {
+        const estado = (row[11] || '').trim()
+        const corretorNorm = stripAccents(corretor)
+        const estadoNorm = stripAccents(estado)
+        // Filtro 2 (corretor) e Filtro 3 (estado/coluna L)
+        let qualificacao = 'SIM'
+        if (!corretor || CORRETOR_DESQUAL.some(t => corretorNorm.includes(t))) {
           qualificacao = 'NÃO'
-        } else if (corretor.length > 2 && !corretorLower.includes('sem ')) {
-          qualificacao = 'SIM'
+        } else if (ESTADO_DESQUAL.some(t => estadoNorm.includes(t))) {
+          qualificacao = 'NÃO'
         }
         allLeads.push({
           date: dateStr,
           dateObj: date,
           interesse: row[2],
           nome: name,
-          origem: row[6],
+          origem,
           corretor,
           visita: row[8] || '',
-          estado: row[11] || '',
+          estado,
           qualificacao,
         })
       }
