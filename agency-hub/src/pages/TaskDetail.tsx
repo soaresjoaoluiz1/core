@@ -41,7 +41,7 @@ export default function TaskDetail() {
   const [recordingData, setRecordingData] = useState({ recording_datetime: '', capture_user_id: '', edit_user_id: '', design_user_id: '' })
 
   const { toast } = useToast()
-  const isDono = user?.role === 'dono'
+  const isDono = user?.role === 'dono' || user?.role === 'gerente'
   const isFunc = user?.role === 'funcionario'
   const isCliente = user?.role === 'cliente'
   const canEdit = isDono || (isFunc && ((task as any)?.assignees?.some((a: any) => a.user_id === user?.id) || task?.assigned_to === user?.id))
