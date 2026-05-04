@@ -153,8 +153,11 @@ export default function OverviewView({ accountId, accountName, days, since, unti
           {hasGA4 && (
             <BigKPI label="Sessoes no Site" value={formatNumber(t.sessions)} icon={<Globe size={18} />} color="#9B59B6" current={t.sessions} previous={t.prevSessions} />
           )}
-          {t.leads > 0 && (
-            <BigKPI label="Leads" value={formatNumber(t.leads)} icon={<Target size={18} />} color="#34A853" current={t.leads} previous={t.prevLeads} />
+          {t.metaConversions > 0 && (
+            <BigKPI label="Meta Conversoes" value={formatNumber(t.metaConversions)} icon={<Target size={18} />} color="#34A853" current={t.metaConversions} previous={t.prevMetaConversions} sub="Leads + Mensagens" />
+          )}
+          {t.gadsConversions > 0 && (
+            <BigKPI label="Google Conversoes" value={formatNumber(t.gadsConversions)} icon={<BarChart3 size={18} />} color="#4285F4" current={t.gadsConversions} previous={t.prevGadsConversions} sub="Conversoes do site" />
           )}
           {hasKiwify && s.kiwify!.sales > 0 && (
             <BigKPI label="Vendas" value={formatNumber(s.kiwify!.sales)} icon={<ShoppingCart size={18} />} color="#FFB300" current={s.kiwify!.sales} previous={s.kiwify!.prevSales} sub={`Receita: ${formatBRL(s.kiwify!.revenue)}`} />
@@ -165,8 +168,24 @@ export default function OverviewView({ accountId, accountName, days, since, unti
           ) : t.cpl > 0 ? (
             <BigKPI label="CPL (Custo/Lead)" value={formatBRL(t.cpl)} icon={<Target size={18} />} color="#FFAA83" current={t.cpl} previous={t.prevCpl} invert />
           ) : null}
-          {t.roas > 0 && (
+          {hasKiwify && t.roas > 0 && (
             <BigKPI label="ROAS" value={`${t.roas.toFixed(2)}x`} icon={<TrendingUp size={18} />} color={t.roas >= 2 ? '#34A853' : t.roas >= 1 ? '#FBBC04' : '#EA4335'} sub={t.roas >= 2 ? 'Saudavel' : t.roas >= 1 ? 'No limite' : 'Negativo'} />
+          )}
+          {s.crm?.qualSim > 0 && (
+            <BigKPI label="Qualificados" value={formatNumber(s.crm.qualSim)} icon={<Target size={18} />} color="#34C759"
+              sub={`${s.crm.crmTotal > 0 ? ((s.crm.qualSim / s.crm.crmTotal) * 100).toFixed(0) : 0}% dos leads do CRM`} />
+          )}
+          {s.crm?.qualNao > 0 && (
+            <BigKPI label="Desqualificados" value={formatNumber(s.crm.qualNao)} icon={<TrendingDown size={18} />} color="#FF6B6B"
+              sub={`${s.crm.crmTotal > 0 ? ((s.crm.qualNao / s.crm.crmTotal) * 100).toFixed(0) : 0}% sem resposta/retorno`} />
+          )}
+          {s.crm?.qualMeio > 0 && (
+            <BigKPI label="Sem Qualificação" value={formatNumber(s.crm.qualMeio)} icon={<Target size={18} />} color="#9B96B0"
+              sub={`${s.crm.crmTotal > 0 ? ((s.crm.qualMeio / s.crm.crmTotal) * 100).toFixed(0) : 0}% pendentes`} />
+          )}
+          {s.crm?.qualSim > 0 && t.spend > 0 && (
+            <BigKPI label="CPL Real (Qualificado)" value={formatBRL(t.spend / s.crm.qualSim)} icon={<DollarSign size={18} />} color="#FFAA83"
+              sub="Investimento / leads qualificados" invert />
           )}
         </div>
       </section>
@@ -178,7 +197,7 @@ export default function OverviewView({ accountId, accountName, days, since, unti
           {/* Daily timeline chart */}
           {dailyData.length > 1 && (
             <div className="chart-card">
-              <h3>Investimento & Leads por Dia</h3>
+              <h3>Investimento & Conversoes por Dia</h3>
               <ResponsiveContainer width="100%" height={260}>
                 <ComposedChart data={dailyData}>
                   <defs>

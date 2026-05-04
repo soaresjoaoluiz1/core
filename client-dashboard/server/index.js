@@ -1010,15 +1010,15 @@ app.get('/api/crm/:accountId', auth, async (req, res) => {
     } else if (config.type === 'kellermann') {
       allLeads = await parseKellermannAllSheets(config.id)
     } else {
-      // Invista format
+      // Invista format — 3 buckets: SIM (qualificado) / NÃO (desqualificado) / MEIO TERMO (sem qualificacao)
       allLeads = []
       const SKIP_NAMES = ['Nome', 'DEZEMBRO', 'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO']
-      // Filtro 1: Origens validas (match EXATO, case-insensitive)
       const VALID_ORIGENS = ['site - invistaimoveissm.com.br', 'facebook', 'instagram', 'whatsapp']
-      // Filtro 2: Corretor desqualifica (match PARCIAL, ignora acentos). Vazio tambem desqualifica.
+      // Qualificado: corretor NAO desqualifica E estado in whitelist
       const CORRETOR_DESQUAL = ['capao - claudia', 'capao da canoa', 'sem resposta', 'sem retorno', 'so informacao']
-      // Filtro 3: Coluna L "ge" — whitelist de qualificados (match PARCIAL, ignora acentos)
       const ESTADO_QUAL = ['em atendimento', 'em qualificacao', 'encaminhado ao setor', 'positiva', 'realmete transf']
+      // Desqualificado: corretor IN list E estado IN list (AND)
+      const ESTADO_DESQUAL = ['negatva', 'pausa temporariamente', 'sem evolucao', 'sem resposta']
       const stripAccents = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
       for (const row of rows) {
         if (row.length < 8) continue
@@ -1027,20 +1027,18 @@ app.get('/api/crm/:accountId', auth, async (req, res) => {
         if (!dateStr || !name || SKIP_NAMES.includes(name) || dateStr === 'Data') continue
         const date = parseBRDate(dateStr)
         if (!date) continue
-        // Filtro 1: origem deve bater EXATO com lista valida
         const origem = (row[6] || '').trim()
         if (!VALID_ORIGENS.includes(origem.toLowerCase())) continue
         const corretor = (row[7] || '').trim()
         const estado = (row[11] || '').trim()
         const corretorNorm = stripAccents(corretor)
         const estadoNorm = stripAccents(estado)
-        // Filtro 2 (corretor desqualifica) e Filtro 3 (estado deve estar na whitelist)
-        let qualificacao = 'NÃO'
-        if (corretor && !CORRETOR_DESQUAL.some(t => corretorNorm.includes(t))) {
-          if (ESTADO_QUAL.some(t => estadoNorm.includes(t))) {
-            qualificacao = 'SIM'
-          }
-        }
+        const corInDesq = !corretor || CORRETOR_DESQUAL.some(t => corretorNorm.includes(t))
+        const estInQual = ESTADO_QUAL.some(t => estadoNorm.includes(t))
+        const estInDesq = ESTADO_DESQUAL.some(t => estadoNorm.includes(t))
+        let qualificacao = 'MEIO TERMO' // sem qualificacao
+        if (!corInDesq && estInQual) qualificacao = 'SIM'
+        else if (corInDesq && estInDesq) qualificacao = 'NÃO'
         allLeads.push({
           date: dateStr,
           dateObj: date,
@@ -2395,6 +2393,7 @@ app.get('/api/overview/:accountId', auth, async (req, res) => {
           const VALID_ORIGENS = ['site - invistaimoveissm.com.br', 'facebook', 'instagram', 'whatsapp']
           const CORRETOR_DESQUAL = ['capao - claudia', 'capao da canoa', 'sem resposta', 'sem retorno', 'so informacao']
           const ESTADO_QUAL = ['em atendimento', 'em qualificacao', 'encaminhado ao setor', 'positiva', 'realmete transf']
+          const ESTADO_DESQUAL = ['negatva', 'pausa temporariamente', 'sem evolucao', 'sem resposta']
           const stripAcc = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
           for (const row of rows) {
             if (row.length < 8) continue
@@ -2402,18 +2401,18 @@ app.get('/api/overview/:accountId', auth, async (req, res) => {
             if (!ds || !nm || SKIP.includes(nm) || ds === 'Data') continue
             const dt = parseBRDate(ds)
             if (!dt || dt < crmStart || dt > crmEnd) continue
-            // Filtro 1: origem exata
             const orig = (row[6] || '').trim()
             if (!VALID_ORIGENS.includes(orig.toLowerCase())) continue
             const cor = (row[7] || '').trim()
             const est = (row[11] || '').trim()
             const corNorm = stripAcc(cor)
             const estNorm = stripAcc(est)
-            // Filtro 2 (corretor desqualifica) e Filtro 3 (estado deve estar na whitelist)
-            let q = 'NÃO'
-            if (cor && !CORRETOR_DESQUAL.some(t => corNorm.includes(t))) {
-              if (ESTADO_QUAL.some(t => estNorm.includes(t))) q = 'SIM'
-            }
+            const corInDesq = !cor || CORRETOR_DESQUAL.some(t => corNorm.includes(t))
+            const estInQual = ESTADO_QUAL.some(t => estNorm.includes(t))
+            const estInDesq = ESTADO_DESQUAL.some(t => estNorm.includes(t))
+            let q = 'MEIO TERMO'
+            if (!corInDesq && estInQual) q = 'SIM'
+            else if (corInDesq && estInDesq) q = 'NÃO'
             crmLeads.push({ qualificacao: q })
           }
         }
