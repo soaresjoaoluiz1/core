@@ -144,14 +144,20 @@ export default function PublicApprovals() {
                 </div>
 
                 {t.approval_link && (
-                  <a href={t.approval_link} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: 'linear-gradient(135deg, #5DADE2, #3498DB)', color: '#fff', borderRadius: 8, fontSize: 14, fontWeight: 700, textDecoration: 'none', marginBottom: 10 }}>
-                    <ExternalLink size={14} /> Ver Arquivo
-                  </a>
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#9B96B0', marginBottom: 6 }}>Arquivo a ser postado</div>
+                    <a href={t.approval_link} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px', background: 'linear-gradient(135deg, #5DADE2, #3498DB)', color: '#fff', borderRadius: 8, fontSize: 14, fontWeight: 700, textDecoration: 'none' }}>
+                      <ExternalLink size={14} /> Ver Arquivo
+                    </a>
+                  </div>
                 )}
 
                 {t.approval_text && (
-                  <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, fontSize: 13, lineHeight: 1.6, color: '#F2F0F7', whiteSpace: 'pre-wrap', marginBottom: 10 }}>
-                    {t.approval_text}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#9B96B0', marginBottom: 6 }}>Legenda do post</div>
+                    <div style={{ padding: '12px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, fontSize: 13, lineHeight: 1.6, color: '#F2F0F7', whiteSpace: 'pre-wrap' }}>
+                      {t.approval_text}
+                    </div>
                   </div>
                 )}
 

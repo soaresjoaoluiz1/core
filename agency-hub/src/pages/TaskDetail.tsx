@@ -480,13 +480,19 @@ export default function TaskDetail() {
                 <div className="card" style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>Conteudo para Aprovacao</div>
                   {task.approval_link && (
-                    <a href={task.approval_link} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm" style={{ marginBottom: 12, display: 'inline-flex' }}>
-                      <ExternalLink size={14} /> Ver Arquivo
-                    </a>
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#9B96B0', marginBottom: 6 }}>Arquivo a ser postado</div>
+                      <a href={task.approval_link} target="_blank" rel="noopener noreferrer" className="btn btn-primary btn-sm" style={{ display: 'inline-flex' }}>
+                        <ExternalLink size={14} /> Ver Arquivo
+                      </a>
+                    </div>
                   )}
                   {task.approval_text && (
-                    <div style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)', fontSize: 14, lineHeight: 1.6, color: '#F2F0F7', whiteSpace: 'pre-wrap', marginBottom: 12 }}>
-                      {task.approval_text}
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#9B96B0', marginBottom: 6 }}>Legenda do post</div>
+                      <div style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)', fontSize: 14, lineHeight: 1.6, color: '#F2F0F7', whiteSpace: 'pre-wrap' }}>
+                        {task.approval_text}
+                      </div>
                     </div>
                   )}
                   {(task.publish_date || task.publish_objective) && (
