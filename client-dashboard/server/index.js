@@ -54,6 +54,8 @@ const ALLOWED_CLIENTS = [
   'essenza',
   'mb vidros', 'mbvidros',
   'agrozacca',
+  'emdi',
+  'oxi dpr', 'dpr',
 ]
 
 function isAllowedAccount(name) {
