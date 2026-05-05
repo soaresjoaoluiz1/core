@@ -101,8 +101,8 @@ router.get('/overview', (req, res) => {
   res.json({
     clients: result,
     summary: {
-      expected: totalExpected + extraSum,
-      received: totalReceived + extraSum,
+      expected: totalExpected, // apenas mensalidades (recorrente)
+      received: totalReceived + extraSum, // mensalidades pagas + extras
       received_recurring: totalReceived,
       received_extra: extraSum,
       pending: totalPending,
