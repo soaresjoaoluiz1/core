@@ -49,6 +49,7 @@ export const BANCOS = [
   'Sofisa',
   'Tribanco',
   // Pagamentos / Carteiras
+  'Asaas',
   'PicPay',
   'Pagseguro',
   'PagBank',
