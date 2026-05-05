@@ -12,8 +12,8 @@ router.get('/overview', (req, res) => {
   const month = req.query.month
   if (!month || !/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'month param required (YYYY-MM)' })
 
-  // Lista todos: ativos sempre, inativos so se tiverem pagamento ou divida em aberto neste mes
-  const clients = db.prepare('SELECT id, name, monthly_fee, payment_day, is_active FROM clients ORDER BY name').all()
+  // Lista todos: ativos sempre, inativos so ate a data de inativacao
+  const clients = db.prepare('SELECT id, name, monthly_fee, payment_day, is_active, inactivated_at FROM clients ORDER BY name').all()
 
   // Get all payments for this month
   const payments = db.prepare('SELECT * FROM payments WHERE reference_month = ?').all(month)
@@ -35,9 +35,14 @@ router.get('/overview', (req, res) => {
   let totalLate = 0
   let lateCount = 0
 
+  // Pra inativos: extrai mes da inativacao (YYYY-MM) — meses depois disso nao aparecem
+  const monthKey = `${reqYear}-${String(reqMonth).padStart(2, '0')}`
+
   const result = clients.map(c => {
     const fee = c.monthly_fee || 0
     const payment = paymentMap[c.id]
+
+    // Pagamento registrado: sempre mostra (historico, mesmo inativo)
     if (payment) {
       totalExpected += fee
       totalReceived += payment.amount
@@ -46,6 +51,13 @@ router.get('/overview', (req, res) => {
         status: 'paid', paid_at: payment.paid_at, amount_paid: payment.amount,
         days_late: 0, penalty: 0, total_due: fee, is_active: c.is_active
       }
+    }
+
+    // Cliente inativo sem pagamento: so mostra ate o mes da inativacao
+    if (!c.is_active) {
+      if (!c.inactivated_at) return null
+      const inactivatedMonth = String(c.inactivated_at).slice(0, 7) // 'YYYY-MM'
+      if (monthKey > inactivatedMonth) return null // mes posterior a saida — some
     }
 
     // No payment - check if late
@@ -71,7 +83,7 @@ router.get('/overview', (req, res) => {
       }
     }
 
-    // Pending (not yet due) — clientes inativos nao geram divida futura
+    // Pending (not yet due) — clientes inativos nao geram divida pendente futura
     if (!c.is_active) return null
     totalExpected += fee
     totalPending += fee
