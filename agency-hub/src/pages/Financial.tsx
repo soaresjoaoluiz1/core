@@ -125,7 +125,9 @@ export default function Financial() {
 
   const handleAddExpense = async () => {
     if (!newExp.category_id || !newExp.amount) return
-    await createExpense({ category_id: +newExp.category_id, description: newExp.description, amount: parseFloat(newExp.amount), reference_month: month, is_recurring: newExp.is_recurring, paid_at: newExp.paid_at || undefined })
+    // reference_month vem da data de pagamento; sem data, usa o mes selecionado
+    const refMonth = newExp.paid_at ? newExp.paid_at.slice(0, 7) : month
+    await createExpense({ category_id: +newExp.category_id, description: newExp.description, amount: parseFloat(newExp.amount), reference_month: refMonth, is_recurring: newExp.is_recurring, paid_at: newExp.paid_at || undefined })
     setShowNewExp(false); setNewExp({ category_id: '', description: '', amount: '', is_recurring: false, paid_at: '' }); load()
   }
 
@@ -147,7 +149,8 @@ export default function Financial() {
 
   const handleAddExtra = async () => {
     if (!newExtra.description || !newExtra.amount) return
-    await createExtraRevenue({ client_id: newExtra.client_id ? +newExtra.client_id : undefined, description: newExtra.description, amount: parseFloat(newExtra.amount), reference_month: month, paid_at: newExtra.paid_at || undefined })
+    const refMonth = newExtra.paid_at ? newExtra.paid_at.slice(0, 7) : month
+    await createExtraRevenue({ client_id: newExtra.client_id ? +newExtra.client_id : undefined, description: newExtra.description, amount: parseFloat(newExtra.amount), reference_month: refMonth, paid_at: newExtra.paid_at || undefined })
     setShowNewExtra(false); setNewExtra({ client_id: '', description: '', amount: '', paid_at: '' }); load()
   }
 
