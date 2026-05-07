@@ -233,26 +233,37 @@ function publicApprovalAction(req, res, action) {
   }
 
   // Update stage; clear changes_requested if going back to approval; set if request-changes
-  if (action === 'request-changes') {
-    db.prepare("UPDATE tasks SET stage = ?, changes_requested = ?, updated_at = datetime('now', '-3 hours') WHERE id = ?").run(newStage, comment, task.id)
-  } else {
-    db.prepare("UPDATE tasks SET stage = ?, changes_requested = NULL, updated_at = datetime('now', '-3 hours') WHERE id = ?").run(newStage, task.id)
+  try {
+    if (action === 'request-changes') {
+      db.prepare("UPDATE tasks SET stage = ?, changes_requested = ?, updated_at = datetime('now', '-3 hours') WHERE id = ?").run(newStage, comment, task.id)
+    } else {
+      db.prepare("UPDATE tasks SET stage = ?, changes_requested = NULL, updated_at = datetime('now', '-3 hours') WHERE id = ?").run(newStage, task.id)
+    }
+    db.prepare('INSERT INTO task_history (task_id, from_stage, to_stage, user_id, comment) VALUES (?, ?, ?, NULL, ?)').run(task.id, task.stage, newStage, historyComment)
+    // task_comments.user_id e NOT NULL — usa o primeiro dono como autor "sistema" pro registro publico
+    const sysUser = db.prepare("SELECT id FROM users WHERE role = 'dono' AND is_active = 1 ORDER BY id LIMIT 1").get()
+    if (sysUser) {
+      db.prepare('INSERT INTO task_comments (task_id, user_id, content, is_internal) VALUES (?, ?, ?, 0)').run(task.id, sysUser.id, publicCommentText)
+    }
+  } catch (err) {
+    console.error('[PublicApproval] DB error:', err.message)
+    return res.status(500).json({ error: err.message || 'Erro ao salvar' })
   }
-  db.prepare('INSERT INTO task_history (task_id, from_stage, to_stage, user_id, comment) VALUES (?, ?, ?, NULL, ?)').run(task.id, task.stage, newStage, historyComment)
-  db.prepare('INSERT INTO task_comments (task_id, user_id, content, is_internal) VALUES (?, NULL, ?, 0)').run(task.id, publicCommentText)
 
-  // Audit log line
   console.log(`[PublicApproval] ${action} task=${task.id} client=${client.id} approver="${approver_name}" ip=${ip} ua="${ua.substring(0,40)}"`)
 
-  // SSE + notifications
   const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id)
-  broadcastSSE(updated.client_id, 'task:stage_changed', updated)
-  notifyMany(getDonoUsers().map(d => d.id), action === 'approve' ? 'task_approved' : action === 'reject' ? 'task_rejected' : 'task_changes_requested', notifyTitle, notifyMsg, updated.id, null)
-  // Notify assignees
-  const assignees = db.prepare('SELECT user_id FROM task_assignees WHERE task_id = ?').all(task.id)
-  assignees.forEach(a => {
-    db.prepare('INSERT INTO notifications (user_id, type, title, message, task_id) VALUES (?, ?, ?, ?, ?)').run(a.user_id, action === 'approve' ? 'task_approved' : action === 'reject' ? 'task_rejected' : 'task_changes_requested', notifyTitle, notifyMsg, updated.id)
-  })
+  // SSE + notifications — best effort, nao derruba a resposta se falhar
+  try {
+    broadcastSSE(updated.client_id, 'task:stage_changed', updated)
+    notifyMany(getDonoUsers().map(d => d.id), action === 'approve' ? 'task_approved' : action === 'reject' ? 'task_rejected' : 'task_changes_requested', notifyTitle, notifyMsg, updated.id, null)
+    const assignees = db.prepare('SELECT user_id FROM task_assignees WHERE task_id = ?').all(task.id)
+    assignees.forEach(a => {
+      db.prepare('INSERT INTO notifications (user_id, type, title, message, task_id) VALUES (?, ?, ?, ?, ?)').run(a.user_id, action === 'approve' ? 'task_approved' : action === 'reject' ? 'task_rejected' : 'task_changes_requested', notifyTitle, notifyMsg, updated.id)
+    })
+  } catch (err) {
+    console.error('[PublicApproval] notify error (ignored):', err.message)
+  }
 
   res.json({ ok: true, task: updated })
 }
