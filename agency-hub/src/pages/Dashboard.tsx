@@ -148,6 +148,58 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               </div>
             )}
+            {stats.byAssignee?.length > 0 && (
+              <div className="chart-card">
+                <h3>Tarefas por Funcionario</h3>
+                <ResponsiveContainer width="100%" height={Math.max(220, stats.byAssignee.length * 28 + 40)}>
+                  <BarChart data={stats.byAssignee} layout="vertical" margin={{ left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <XAxis type="number" tick={{ fill: '#A8A3B8', fontSize: 10 }} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" tick={{ fill: '#A8A3B8', fontSize: 11 }} width={110} />
+                    <Tooltip content={<Tip />} />
+                    <Bar dataKey="count" name="Tarefas" radius={[0, 6, 6, 0]}>
+                      {stats.byAssignee.map((a: any, i: number) => <Cell key={a.id} fill={COLORS[i % COLORS.length]} />)}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {stats.daily?.length > 0 && (
+              <div className="chart-card">
+                <h3>Media de Tarefas Criadas / Dia</h3>
+                {(() => {
+                  const total = (stats.daily as any[]).reduce((s, d) => s + (d.count || 0), 0)
+                  const avg = days > 0 ? Math.round((total / days) * 10) / 10 : 0
+                  const max = Math.max(...(stats.daily as any[]).map((d: any) => d.count || 0), 1)
+                  const filled: any[] = []
+                  const today = new Date()
+                  const map = new Map((stats.daily as any[]).map((d: any) => [d.date, d.count]))
+                  for (let i = days - 1; i >= 0; i--) {
+                    const d = new Date(today); d.setDate(d.getDate() - i)
+                    const key = d.toISOString().slice(0, 10)
+                    filled.push({ date: key.slice(5), count: map.get(key) || 0 })
+                  }
+                  return (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
+                        <div style={{ fontSize: 32, fontWeight: 800, color: '#FFB300', fontFamily: 'var(--font-heading)' }}>{avg}</div>
+                        <div style={{ fontSize: 12, color: '#A8A3B8' }}>tarefas/dia · ultimos {days}d</div>
+                        <div style={{ marginLeft: 'auto', fontSize: 11, color: '#6B6580' }}>{total} criadas · pico {max}</div>
+                      </div>
+                      <ResponsiveContainer width="100%" height={140}>
+                        <BarChart data={filled}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                          <XAxis dataKey="date" tick={{ fill: '#A8A3B8', fontSize: 9 }} interval={Math.max(0, Math.floor(filled.length / 12))} />
+                          <YAxis tick={{ fill: '#A8A3B8', fontSize: 10 }} allowDecimals={false} />
+                          <Tooltip content={<Tip />} />
+                          <Bar dataKey="count" name="Criadas" fill="#FFB300" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </>
+                  )
+                })()}
+              </div>
+            )}
           </div>
         </section>
       )}

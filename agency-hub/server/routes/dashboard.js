@@ -20,6 +20,17 @@ router.get('/stats', (req, res) => {
       LEFT JOIN tasks t ON t.department_id = d.id AND t.is_active = 1
       WHERE d.is_active = 1 GROUP BY d.id ORDER BY count DESC
     `).all()
+    const byAssignee = db.prepare(`
+      SELECT u.id, u.name,
+        COUNT(DISTINCT ta.task_id) as count
+      FROM users u
+      LEFT JOIN task_assignees ta ON ta.user_id = u.id
+      LEFT JOIN tasks t ON t.id = ta.task_id AND t.is_active = 1
+      WHERE u.role IN ('funcionario', 'gerente', 'dono') AND u.is_active = 1
+      GROUP BY u.id
+      HAVING count > 0
+      ORDER BY count DESC
+    `).all()
     const byCategory = db.prepare(`
       SELECT cat.name, cat.color, COUNT(t.id) as count FROM task_categories cat
       LEFT JOIN tasks t ON t.category_id = cat.id AND t.is_active = 1
@@ -32,7 +43,7 @@ router.get('/stats', (req, res) => {
     const daily = db.prepare("SELECT date(created_at) as date, COUNT(*) as count FROM tasks WHERE created_at >= ? AND is_active = 1 GROUP BY date(created_at) ORDER BY date").all(sinceStr)
     const toPublish = db.prepare("SELECT t.id, t.title, t.due_date, c.name as client_name, t.approval_link FROM tasks t LEFT JOIN clients c ON t.client_id = c.id WHERE t.stage = 'programar_publicacao' AND t.is_active = 1 ORDER BY t.due_date ASC").all()
 
-    res.json({ totalTasks, byStage, byDepartment, byCategory, overdue, pendingInternal, pendingClient, completedPeriod, daily, toPublish })
+    res.json({ totalTasks, byStage, byDepartment, byCategory, byAssignee, overdue, pendingInternal, pendingClient, completedPeriod, daily, toPublish })
   } else if (req.user.role === 'funcionario') {
     const myTasks = db.prepare('SELECT COUNT(*) as c FROM tasks WHERE id IN (SELECT task_id FROM task_assignees WHERE user_id = ?) AND is_active = 1').get(req.user.id).c
     const byStage = db.prepare(`
