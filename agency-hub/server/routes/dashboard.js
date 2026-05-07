@@ -31,6 +31,58 @@ router.get('/stats', (req, res) => {
       HAVING count > 0
       ORDER BY count DESC
     `).all()
+
+    // Throughput: tarefas concluidas no periodo por funcionario
+    const throughputByAssignee = db.prepare(`
+      SELECT u.id, u.name, COUNT(DISTINCT t.id) as count
+      FROM users u
+      JOIN task_assignees ta ON ta.user_id = u.id
+      JOIN tasks t ON t.id = ta.task_id
+      WHERE u.role IN ('funcionario', 'gerente', 'dono') AND u.is_active = 1
+        AND t.stage = 'concluido' AND t.updated_at >= ?
+      GROUP BY u.id
+      HAVING count > 0
+      ORDER BY count DESC
+    `).all(sinceStr)
+
+    // Tempo medio em aguardando_cliente, por cliente (em horas)
+    const clientWaitTime = db.prepare(`
+      SELECT c.name, AVG(diff_hours) as avg_hours, COUNT(*) as samples
+      FROM (
+        SELECT th.task_id, t.client_id,
+          (julianday(COALESCE(
+            (SELECT created_at FROM task_history WHERE task_id = th.task_id AND id > th.id ORDER BY id LIMIT 1),
+            datetime('now', '-3 hours')
+          )) - julianday(th.created_at)) * 24.0 as diff_hours
+        FROM task_history th
+        JOIN tasks t ON t.id = th.task_id
+        WHERE th.to_stage = 'aguardando_cliente'
+          AND t.client_id IS NOT NULL
+          AND th.created_at >= ?
+      ) sub
+      JOIN clients c ON c.id = sub.client_id
+      WHERE diff_hours >= 0
+      GROUP BY sub.client_id
+      HAVING samples > 0
+      ORDER BY avg_hours DESC
+      LIMIT 20
+    `).all(sinceStr)
+
+    // Taxa de retrabalho: % de tarefas que voltaram da aprovacao pra revisao/producao
+    const reworkData = db.prepare(`
+      SELECT
+        (SELECT COUNT(DISTINCT task_id) FROM task_history
+         WHERE to_stage IN ('revisao_interna', 'em_producao')
+           AND from_stage IN ('aprovacao_interna', 'aguardando_cliente')
+           AND created_at >= ?
+        ) as reworked,
+        (SELECT COUNT(*) FROM tasks
+         WHERE is_active = 1 AND created_at >= ?
+        ) as totalCreated
+    `).get(sinceStr, sinceStr)
+    const reworkRate = reworkData.totalCreated > 0
+      ? Math.round((reworkData.reworked / reworkData.totalCreated) * 1000) / 10
+      : 0
     const byCategory = db.prepare(`
       SELECT cat.name, cat.color, COUNT(t.id) as count FROM task_categories cat
       LEFT JOIN tasks t ON t.category_id = cat.id AND t.is_active = 1
@@ -43,7 +95,7 @@ router.get('/stats', (req, res) => {
     const daily = db.prepare("SELECT date(created_at) as date, COUNT(*) as count FROM tasks WHERE created_at >= ? AND is_active = 1 GROUP BY date(created_at) ORDER BY date").all(sinceStr)
     const toPublish = db.prepare("SELECT t.id, t.title, t.due_date, c.name as client_name, t.approval_link FROM tasks t LEFT JOIN clients c ON t.client_id = c.id WHERE t.stage = 'programar_publicacao' AND t.is_active = 1 ORDER BY t.due_date ASC").all()
 
-    res.json({ totalTasks, byStage, byDepartment, byCategory, byAssignee, overdue, pendingInternal, pendingClient, completedPeriod, daily, toPublish })
+    res.json({ totalTasks, byStage, byDepartment, byCategory, byAssignee, throughputByAssignee, clientWaitTime, reworkRate, reworkedCount: reworkData.reworked, overdue, pendingInternal, pendingClient, completedPeriod, daily, toPublish })
   } else if (req.user.role === 'funcionario') {
     const myTasks = db.prepare('SELECT COUNT(*) as c FROM tasks WHERE id IN (SELECT task_id FROM task_assignees WHERE user_id = ?) AND is_active = 1').get(req.user.id).c
     const byStage = db.prepare(`

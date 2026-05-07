@@ -150,7 +150,7 @@ export default function Dashboard() {
             )}
             {stats.byAssignee?.length > 0 && (
               <div className="chart-card">
-                <h3>Tarefas por Funcionario</h3>
+                <h3>Tarefas Abertas por Funcionario</h3>
                 <ResponsiveContainer width="100%" height={Math.max(220, stats.byAssignee.length * 28 + 40)}>
                   <BarChart data={stats.byAssignee} layout="vertical" margin={{ left: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
@@ -162,6 +162,58 @@ export default function Dashboard() {
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
+              </div>
+            )}
+            {stats.throughputByAssignee?.length > 0 && (
+              <div className="chart-card">
+                <h3>Concluidas no Periodo (por Funcionario)</h3>
+                <ResponsiveContainer width="100%" height={Math.max(220, stats.throughputByAssignee.length * 28 + 40)}>
+                  <BarChart data={stats.throughputByAssignee} layout="vertical" margin={{ left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <XAxis type="number" tick={{ fill: '#A8A3B8', fontSize: 10 }} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" tick={{ fill: '#A8A3B8', fontSize: 11 }} width={110} />
+                    <Tooltip content={<Tip />} />
+                    <Bar dataKey="count" name="Concluidas" fill="#34C759" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {stats.clientWaitTime?.length > 0 && (
+              <div className="chart-card">
+                <h3>Tempo Medio Aguardando Cliente (horas)</h3>
+                <p style={{ fontSize: 11, color: '#6B6580', marginTop: -4, marginBottom: 8 }}>Quanto tempo cada cliente leva pra aprovar tarefas</p>
+                <ResponsiveContainer width="100%" height={Math.max(220, stats.clientWaitTime.length * 26 + 40)}>
+                  <BarChart data={stats.clientWaitTime.map((c: any) => ({ ...c, avg_hours: Math.round(c.avg_hours * 10) / 10 }))} layout="vertical" margin={{ left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <XAxis type="number" tick={{ fill: '#A8A3B8', fontSize: 10 }} />
+                    <YAxis type="category" dataKey="name" tick={{ fill: '#A8A3B8', fontSize: 11 }} width={130} />
+                    <Tooltip content={<Tip />} formatter={(v: any) => `${v}h`} />
+                    <Bar dataKey="avg_hours" name="Horas" radius={[0, 6, 6, 0]}>
+                      {stats.clientWaitTime.map((c: any, i: number) => {
+                        const color = c.avg_hours > 72 ? '#FF6B6B' : c.avg_hours > 24 ? '#FBBC04' : '#34C759'
+                        return <Cell key={i} fill={color} />
+                      })}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {stats.totalTasks > 0 && (
+              <div className="chart-card">
+                <h3>Taxa de Retrabalho</h3>
+                <p style={{ fontSize: 11, color: '#6B6580', marginTop: -4, marginBottom: 16 }}>Tarefas que voltaram da aprovacao pra revisao/producao</p>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 16 }}>
+                  <div style={{ fontSize: 48, fontWeight: 800, color: stats.reworkRate > 20 ? '#FF6B6B' : stats.reworkRate > 10 ? '#FBBC04' : '#34C759', fontFamily: 'var(--font-heading)' }}>{stats.reworkRate}%</div>
+                  <div style={{ fontSize: 13, color: '#A8A3B8' }}>{stats.reworkedCount || 0} de {stats.totalTasks} tarefas</div>
+                </div>
+                <div style={{ height: 12, background: 'rgba(255,255,255,0.04)', borderRadius: 6, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.min(100, stats.reworkRate)}%`, background: stats.reworkRate > 20 ? '#FF6B6B' : stats.reworkRate > 10 ? '#FBBC04' : '#34C759', borderRadius: 6, transition: 'width 0.3s' }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#6B6580', marginTop: 6 }}>
+                  <span>Saudavel &lt; 10%</span>
+                  <span>Atencao 10-20%</span>
+                  <span>Critico &gt; 20%</span>
+                </div>
               </div>
             )}
             {stats.daily?.length > 0 && (
