@@ -86,16 +86,103 @@ export async function fetchAccounts(): Promise<MetaAccount[]> {
   return data.accounts
 }
 
-export async function fetchCompare(accountId: string, days = 30, level = 'account', since?: string, until?: string): Promise<CompareResponse> {
-  let url = `/api/meta/accounts/${accountId}/insights/compare?days=${days}&level=${level}`
+// USA CACHE por padrao (rapido, dados ate ontem 23:59). Passar useCache=false pra bater na API Meta ao vivo.
+export async function fetchCompare(accountId: string, days = 30, level = 'account', since?: string, until?: string, useCache = true): Promise<CompareResponse> {
+  const base = useCache ? '/api/meta/cached/accounts' : '/api/meta/accounts'
+  let url = `${base}/${accountId}/insights/compare?days=${days}&level=${level}`
   if (since && until) url += `&since=${since}&until=${until}`
   return apiFetch<CompareResponse>(url)
 }
 
-export async function fetchDailyCompare(accountId: string, days = 30, since?: string, until?: string): Promise<DailyCompareResponse> {
-  let url = `/api/meta/accounts/${accountId}/insights/daily-compare?days=${days}`
+export async function fetchDailyCompare(accountId: string, days = 30, since?: string, until?: string, useCache = true): Promise<DailyCompareResponse> {
+  const base = useCache ? '/api/meta/cached/accounts' : '/api/meta/accounts'
+  let url = `${base}/${accountId}/insights/daily-compare?days=${days}`
   if (since && until) url += `&since=${since}&until=${until}`
   return apiFetch<DailyCompareResponse>(url)
+}
+
+// ---------- Adsets / Ads / Preview (arvore de campanhas) ----------
+
+export interface MetaAdset {
+  id: string
+  name: string
+  status?: string
+  effective_status?: string
+  daily_budget?: string
+  lifetime_budget?: string
+  optimization_goal?: string
+  insight: MetaInsight | null
+}
+
+export interface MetaCreative {
+  id?: string
+  name?: string
+  thumbnail_url?: string
+  image_url?: string
+  video_id?: string
+  effective_object_story_id?: string
+  body?: string
+  title?: string
+  call_to_action_type?: string
+}
+
+export interface MetaAd {
+  id: string
+  name: string
+  status?: string
+  effective_status?: string
+  creative?: MetaCreative
+  insight: MetaInsight | null
+}
+
+export type AdPreviewFormat =
+  | 'DESKTOP_FEED_STANDARD'
+  | 'MOBILE_FEED_STANDARD'
+  | 'INSTAGRAM_STANDARD'
+  | 'INSTAGRAM_STORY'
+  | 'INSTAGRAM_REELS'
+
+export async function fetchAdsets(campaignId: string, days = 30, since?: string, until?: string, accountId?: string, useCache = true): Promise<MetaAdset[]> {
+  const base = useCache ? '/api/meta/cached/campaigns' : '/api/meta/campaigns'
+  let url = `${base}/${campaignId}/adsets?days=${days}`
+  if (since && until) url += `&since=${since}&until=${until}`
+  if (accountId) url += `&accountId=${accountId}`
+  const data = await apiFetch<{ data: MetaAdset[] }>(url)
+  return data.data || []
+}
+
+export async function fetchAds(adsetId: string, days = 30, since?: string, until?: string, accountId?: string, useCache = true): Promise<MetaAd[]> {
+  const base = useCache ? '/api/meta/cached/adsets' : '/api/meta/adsets'
+  let url = `${base}/${adsetId}/ads?days=${days}`
+  if (since && until) url += `&since=${since}&until=${until}`
+  if (accountId) url += `&accountId=${accountId}`
+  const data = await apiFetch<{ data: MetaAd[] }>(url)
+  return data.data || []
+}
+
+export async function fetchAdPreview(adId: string, format: AdPreviewFormat = 'DESKTOP_FEED_STANDARD'): Promise<string> {
+  const data = await apiFetch<{ html: string }>(`/api/meta/ads/${adId}/preview?format=${format}`)
+  return data.html || ''
+}
+
+// Top ads (para grid de criativos)
+export interface MetaTopAd {
+  id: string
+  name: string
+  status?: string
+  effective_status?: string
+  campaign_id?: string
+  adset_id?: string
+  creative?: MetaCreative
+  insight: MetaInsight | null
+}
+
+export async function fetchTopAds(accountId: string, days = 30, since?: string, until?: string, _limit = 200, useCache = true): Promise<MetaTopAd[]> {
+  const base = useCache ? '/api/meta/cached/accounts' : '/api/meta/accounts'
+  let url = `${base}/${accountId}/top-ads?days=${days}`
+  if (since && until) url += `&since=${since}&until=${until}`
+  const data = await apiFetch<{ data: MetaTopAd[] }>(url)
+  return data.data || []
 }
 
 // Helper to extract action value
@@ -296,8 +383,9 @@ export interface IGMedia {
   insights: Record<string, number>
 }
 
-export async function fetchIGAccounts(): Promise<IGAccount[]> {
-  const data = await apiFetch<{ accounts: IGAccount[] }>('/api/instagram/accounts')
+export async function fetchIGAccounts(accountName?: string): Promise<IGAccount[]> {
+  const qs = accountName ? `?name=${encodeURIComponent(accountName)}` : ''
+  const data = await apiFetch<{ accounts: IGAccount[] }>(`/api/instagram/accounts${qs}`)
   return data.accounts
 }
 

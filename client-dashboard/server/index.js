@@ -14,6 +14,46 @@ if (!globalThis.fetch) {
   globalThis.URLSearchParams = globalThis.URLSearchParams || URL.URLSearchParams
 }
 
+// SQLite + snapshots + cron (Fase 0)
+import * as agg from './aggregate.js'
+import { syncAllAccounts, syncAccount } from './snapshots.js'
+import {
+  getDashboardConfig, saveDashboardConfig, setDashboardSlug, getConfigBySlug,
+  saveTemplate, listTemplates, getTemplate, removeTemplate,
+  getAccountLatestUpdate,
+  apiCached, cacheGet, cacheSet,
+} from './db.js'
+
+// TTL padrao pro cache HTTP das outras APIs (Google Ads/IG/GA4)
+// 4h = balanco entre freshness e reducao de chamadas.
+const OTHER_APIS_CACHE_MIN = 240  // 4 horas
+
+/**
+ * Middleware que faz cache automatico baseado na URL completa.
+ * - Se ha valor fresco no cache, retorna direto sem chamar o handler
+ * - Senao, chama o handler normalmente e intercepta res.json pra salvar
+ * - Query param ?refresh=1 força bypass (usado pelo botao Sincronizar)
+ */
+function cacheMiddleware(req, res, next) {
+  if (req.query.refresh === '1') return next()
+  const key = `${req.method}:${req.originalUrl.split('?')[0]}?${new URLSearchParams(req.query).toString()}`
+  const hit = cacheGet(key)
+  if (hit) {
+    return res.json({ ...hit.data, _cache_meta: { from: 'cache', updated: hit.updated } })
+  }
+  const originalJson = res.json.bind(res)
+  res.json = (body) => {
+    // Nao cacheia erros (statusCode >= 400) nem respostas com "error" no corpo
+    if (res.statusCode < 400 && body && !body.error) {
+      cacheSet(key, body, OTHER_APIS_CACHE_MIN)
+    }
+    return originalJson({ ...body, _cache_meta: { from: 'live', updated: new Date().toISOString().slice(0,19).replace('T',' ') } })
+  }
+  next()
+}
+import cron from 'node-cron'
+import { nanoid } from 'nanoid'
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: resolve(__dirname, '../../.env') })
 
@@ -54,6 +94,31 @@ let GOOGLE_ADS_LOGIN_CUSTOMER_ID = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID
 
 // Nomes de clientes vindos do Hub (substituem/expandem ALLOWED_CLIENTS hardcoded)
 let HUB_CLIENT_NAMES = []
+// Config completa dos clientes vinda do Hub (core_client_name + core_meta_account_id +
+// core_ig_page_id + core_gads_customer_id + core_ga4_property_id). Usada pra fixar
+// exatamente qual IG/Meta/Ads pegar por cliente, sem fuzzy match ambiguo.
+let HUB_CLIENTS = []
+
+// Retorna a config do cliente Hub que casa com o accountName recebido do frontend.
+// Match ordem: core_client_name === name → name (raw) === name → substring.
+// Retorna null se nao achar (a rota decide fazer fallback ou nao).
+function getHubClientConfig(accountName) {
+  if (!accountName) return null
+  const lower = accountName.toLowerCase().trim()
+  // Match exato primeiro
+  const exact = HUB_CLIENTS.find(c => {
+    const coreName = (c.core_client_name || '').toLowerCase().trim()
+    const name     = (c.name || '').toLowerCase().trim()
+    return (coreName && coreName === lower) || (name && name === lower)
+  })
+  if (exact) return exact
+  // Substring como fallback (caso accountName venha de outra fonte, ex: "CA - Gui Autocar Mecanica")
+  return HUB_CLIENTS.find(c => {
+    const coreName = (c.core_client_name || '').toLowerCase().trim()
+    const name     = (c.name || '').toLowerCase().trim()
+    return (coreName && lower.includes(coreName)) || (name && lower.includes(name))
+  }) || null
+}
 
 // Fetch tokens + lista de clientes do Hub. Roda no startup e a cada 10 min.
 async function syncFromHub() {
@@ -76,8 +141,10 @@ async function syncFromHub() {
     }
     if (clientsRes.ok) {
       const { clients } = await clientsRes.json()
+      HUB_CLIENTS = clients
       HUB_CLIENT_NAMES = clients.map(c => (c.core_client_name || c.name || '').trim()).filter(Boolean)
-      console.log('[Hub sync] clientes recebidos:', HUB_CLIENT_NAMES.length)
+      console.log('[Hub sync] clientes recebidos:', HUB_CLIENTS.length,
+        '| com IG vinculada:', HUB_CLIENTS.filter(c => c.core_ig_page_id).length)
     }
   } catch (err) {
     console.error('[Hub sync] falhou (usando fallback .env):', err.message)
@@ -244,22 +311,121 @@ function getDateRanges(days, since, until) {
   }
 }
 
-// List all ad accounts (filtered)
-app.get('/api/meta/accounts', auth, async (req, res) => {
+// List ad accounts — MONTADA DIRETO DO HUB (sem chamar Meta pra listar).
+// Isso evita bater no rate limit toda vez que o dashboard abre.
+// Os dados de insights ja vem do cache SQLite (endpoints /cached/*).
+// Se quiser info extra da Meta (amount_spent atual, currency), o Meta API
+// so eh chamada UMA VEZ e cacheada — se der rate limit, cai no Hub-only.
+let META_ACCOUNTS_CACHE = { data: null, at: 0 }
+const META_ACCOUNTS_TTL_MS = 30 * 60 * 1000  // 30 min
+
+async function fetchMetaAccountsCached() {
+  const now = Date.now()
+  if (META_ACCOUNTS_CACHE.data && (now - META_ACCOUNTS_CACHE.at) < META_ACCOUNTS_TTL_MS) {
+    return META_ACCOUNTS_CACHE.data
+  }
   try {
-    let allAccounts = []
-    let url = `${META_BASE}/me/adaccounts?fields=id,name,account_status,currency,amount_spent&limit=100&access_token=${META_TOKEN}`
+    let all = []
+    let url = `${META_BASE}/me/adaccounts?fields=id,name,account_status,currency,amount_spent&limit=200&access_token=${META_TOKEN}`
     while (url) {
       const resp = await fetch(url)
       const data = await resp.json()
-      if (data.error) return res.status(400).json(data)
-      allAccounts = allAccounts.concat(data.data || [])
+      if (data.error) throw new Error(data.error.message)
+      all = all.concat(data.data || [])
       url = data.paging?.next || null
     }
-    const filtered = allAccounts
-      .filter((a) => [1, 2, 3].includes(a.account_status) && isAllowedAccount(a.name))
-      .sort((a, b) => a.name.localeCompare(b.name))
-    res.json({ accounts: filtered })
+    META_ACCOUNTS_CACHE = { data: all, at: now }
+    return all
+  } catch (err) {
+    // Se Meta falhou (rate limit etc), retorna o cache velho se existir
+    if (META_ACCOUNTS_CACHE.data) return META_ACCOUNTS_CACHE.data
+    return []
+  }
+}
+
+app.get('/api/meta/accounts', auth, async (req, res) => {
+  try {
+    // Se Hub sync ainda nao rodou (HUB_CLIENTS vazio), forca uma vez antes
+    if (!HUB_CLIENTS.length) await syncFromHub()
+
+    // Constroi lista base direto do Hub — nao precisa Meta pra saber o que existe
+    const hubAccounts = HUB_CLIENTS
+      .filter(c => (c.core_meta_account_id || '').trim())
+      .map(c => {
+        const rawId = c.core_meta_account_id.trim()
+        const withPrefix = rawId.startsWith('act_') ? rawId : `act_${rawId}`
+        return {
+          id: withPrefix,
+          name: (c.core_client_name || c.name || 'Sem nome').trim(),
+          account_status: 1,       // assume ativa (Meta seria a fonte real, mas Hub controla o filtro)
+          currency: 'BRL',
+          amount_spent: '0',
+          _hub_client_id: c.id,
+        }
+      })
+
+    if (hubAccounts.length === 0) {
+      return res.json({ accounts: [], warning: 'Nenhum cliente com conta Meta configurada no Hub' })
+    }
+
+    // Best effort: enriquece com dados Meta se disponivel (cacheado 30min, tolera rate limit)
+    try {
+      const metaAccounts = await fetchMetaAccountsCached()
+      if (metaAccounts.length > 0) {
+        const metaMap = new Map(metaAccounts.map(a => [a.id, a]))
+        for (const hubAcc of hubAccounts) {
+          const meta = metaMap.get(hubAcc.id)
+          if (meta) {
+            hubAcc.account_status = meta.account_status
+            hubAcc.currency = meta.currency
+            hubAcc.amount_spent = meta.amount_spent
+          }
+        }
+      }
+    } catch (_) {
+      // Silently fail — usamos os dados-base do Hub
+    }
+
+    hubAccounts.sort((a, b) => a.name.localeCompare(b.name))
+    res.json({ accounts: hubAccounts, total_hub_clients: hubAccounts.length })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Limpa cache HTTP das APIs (Google Ads/IG/GA4) — usado pelo botao Sincronizar
+// Pode filtrar por padrao: ?scope=google-ads | instagram | analytics | all
+import db from './db.js'
+app.post('/api/cache/clear', auth, (req, res) => {
+  try {
+    const scope = req.query.scope || 'all'
+    let n = 0
+    if (scope === 'all') {
+      n = db.prepare('DELETE FROM api_cache').run().changes
+    } else if (scope === 'google-ads') {
+      n = db.prepare("DELETE FROM api_cache WHERE cache_key LIKE '%/api/google-ads/%'").run().changes
+    } else if (scope === 'instagram') {
+      n = db.prepare("DELETE FROM api_cache WHERE cache_key LIKE '%/api/instagram/%'").run().changes
+    } else if (scope === 'analytics') {
+      n = db.prepare("DELETE FROM api_cache WHERE cache_key LIKE '%/api/analytics/%'").run().changes
+    }
+    res.json({ ok: true, cleared: n, scope })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Forca sync com Hub agora (usar quando adicionar cliente novo no Hub e nao quer aguardar 10 min)
+app.post('/api/hub/refresh', auth, async (_req, res) => {
+  try {
+    await syncFromHub()
+    res.json({
+      ok: true,
+      hub_clients: HUB_CLIENTS.length,
+      with_meta: HUB_CLIENTS.filter(c => c.core_meta_account_id).length,
+      with_ig: HUB_CLIENTS.filter(c => c.core_ig_page_id).length,
+      with_gads: HUB_CLIENTS.filter(c => c.core_gads_customer_id).length,
+    })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -339,8 +505,12 @@ app.get('/api/meta/accounts/:accountId/insights/daily-compare', auth, async (req
 // =============================================
 
 // Get all Instagram business accounts linked to Facebook Pages
+// Se ?name=X for passado e o cliente estiver no Hub com core_ig_page_id vinculado,
+// retorna SOMENTE aquela pagina (evita fuzzy match cross-cliente no frontend).
+// Se cliente esta no Hub sem IG vinculada, retorna array vazio (nao mostra dados de outro).
 app.get('/api/instagram/accounts', auth, async (req, res) => {
   try {
+    const accountName = (req.query.name || '').trim()
     let allPages = []
     let url = `${META_BASE}/me/accounts?fields=id,name,instagram_business_account{id,name,username,followers_count,follows_count,media_count,profile_picture_url}&limit=100&access_token=${META_TOKEN}`
     while (url) {
@@ -350,6 +520,30 @@ app.get('/api/instagram/accounts', auth, async (req, res) => {
       allPages = allPages.concat(data.data || [])
       url = data.paging?.next || null
     }
+
+    // Se cliente foi passado, resolve pelo Hub
+    if (accountName) {
+      const hubCfg = getHubClientConfig(accountName)
+      const pinnedIgPageId = hubCfg?.core_ig_page_id?.trim() || null
+      if (pinnedIgPageId) {
+        const match = allPages.find(p =>
+          p.instagram_business_account &&
+          (p.id === pinnedIgPageId || p.instagram_business_account.id === pinnedIgPageId)
+        )
+        const igAccounts = match ? [{
+          pageId: match.id,
+          pageName: match.name,
+          ...match.instagram_business_account,
+        }] : []
+        return res.json({ accounts: igAccounts, source: 'hub-pinned' })
+      }
+      if (hubCfg) {
+        // Cliente no Hub mas sem IG vinculada → nao mostra dados de outro
+        return res.json({ accounts: [], source: 'hub-not-linked' })
+      }
+    }
+
+    // Fallback: retorna todas as pages permitidas (comportamento antigo, pra compat)
     const igAccounts = allPages
       .filter((p) => p.instagram_business_account && isAllowedAccount(p.name))
       .map((p) => ({
@@ -358,14 +552,14 @@ app.get('/api/instagram/accounts', auth, async (req, res) => {
         ...p.instagram_business_account,
       }))
       .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-    res.json({ accounts: igAccounts })
+    res.json({ accounts: igAccounts, source: 'legacy-all' })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
 })
 
 // Instagram profile info
-app.get('/api/instagram/:igId/profile', auth, async (req, res) => {
+app.get('/api/instagram/:igId/profile', auth, cacheMiddleware, async (req, res) => {
   try {
     const data = await metaFetch(`/${req.params.igId}`, {
       fields: 'id,name,username,followers_count,follows_count,media_count,profile_picture_url,biography',
@@ -378,7 +572,7 @@ app.get('/api/instagram/:igId/profile', auth, async (req, res) => {
 
 // Instagram account insights (with comparison)
 // IG API requires two separate calls: daily metrics (period=day) and total_value metrics
-app.get('/api/instagram/:igId/insights', auth, async (req, res) => {
+app.get('/api/instagram/:igId/insights', auth, cacheMiddleware, async (req, res) => {
   try {
     const { igId } = req.params
     const { days = '7', since, until } = req.query
@@ -448,7 +642,7 @@ app.get('/api/instagram/:igId/insights', auth, async (req, res) => {
 })
 
 // Instagram recent media with engagement
-app.get('/api/instagram/:igId/media', auth, async (req, res) => {
+app.get('/api/instagram/:igId/media', auth, cacheMiddleware, async (req, res) => {
   try {
     const { igId } = req.params
     const { limit = '20' } = req.query
@@ -1406,6 +1600,135 @@ app.get('/api/meta/accounts/:accountId/campaigns', auth, async (req, res) => {
   }
 })
 
+// Adsets of a campaign — com insights do periodo (spend, actions, etc)
+app.get('/api/meta/campaigns/:campaignId/adsets', auth, async (req, res) => {
+  try {
+    const { campaignId } = req.params
+    const { days = '30', since, until } = req.query
+    const ranges = getDateRanges(parseInt(days), since, until)
+
+    const insightsField = `insights.time_range(${JSON.stringify(ranges.current)}){spend,impressions,clicks,ctr,cpc,cpm,reach,frequency,actions,cost_per_action_type}`
+
+    const data = await metaFetch(`/${campaignId}/adsets`, {
+      fields: `id,name,status,effective_status,daily_budget,lifetime_budget,optimization_goal,billing_event,targeting,${insightsField}`,
+      limit: '100',
+    })
+
+    // Flatten insights[0] into adset itself
+    const adsets = (data.data || []).map(a => ({
+      ...a,
+      insight: (a.insights && a.insights.data && a.insights.data[0]) || null,
+      insights: undefined,
+    }))
+
+    res.json({ data: adsets, ranges })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Ads of an adset — com insights + creative (thumbnail)
+app.get('/api/meta/adsets/:adsetId/ads', auth, async (req, res) => {
+  try {
+    const { adsetId } = req.params
+    const { days = '30', since, until } = req.query
+    const ranges = getDateRanges(parseInt(days), since, until)
+
+    const insightsField = `insights.time_range(${JSON.stringify(ranges.current)}){spend,impressions,clicks,ctr,cpc,cpm,reach,frequency,actions,cost_per_action_type}`
+    const creativeField = 'creative{id,name,thumbnail_url,image_url,video_id,effective_object_story_id,object_story_spec,body,title,call_to_action_type}'
+
+    const data = await metaFetch(`/${adsetId}/ads`, {
+      fields: `id,name,status,effective_status,${creativeField},${insightsField}`,
+      limit: '100',
+    })
+
+    const ads = (data.data || []).map(a => ({
+      ...a,
+      insight: (a.insights && a.insights.data && a.insights.data[0]) || null,
+      insights: undefined,
+    }))
+
+    res.json({ data: ads, ranges })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Top ads da conta — todos os ads com insights + creative pra selecionar top N no frontend
+app.get('/api/meta/accounts/:accountId/top-ads', auth, async (req, res) => {
+  try {
+    const { accountId } = req.params
+    const { days = '30', since, until, limit = '200' } = req.query
+    const ranges = getDateRanges(parseInt(days), since, until)
+
+    const insightsField = `insights.time_range(${JSON.stringify(ranges.current)}){spend,impressions,clicks,ctr,cpc,cpm,reach,frequency,actions,cost_per_action_type}`
+    const creativeField = 'creative{id,name,thumbnail_url,image_url,video_id,effective_object_story_id,body,title,call_to_action_type}'
+
+    const data = await metaFetch(`/${accountId}/ads`, {
+      fields: `id,name,status,effective_status,campaign_id,adset_id,${creativeField},${insightsField}`,
+      filtering: JSON.stringify([{ field: 'ad.effective_status', operator: 'IN', value: ['ACTIVE','PAUSED','ADSET_PAUSED','CAMPAIGN_PAUSED'] }]),
+      limit: String(limit),
+    })
+
+    const ads = (data.data || []).map(a => ({
+      ...a,
+      insight: (a.insights && a.insights.data && a.insights.data[0]) || null,
+      insights: undefined,
+    })).filter(a => a.insight && parseFloat(a.insight.spend || '0') > 0)  // so ads que tiveram gasto no periodo
+
+    res.json({ data: ads, ranges })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Lista action_types unicos que apareceram nas ads da conta (nos snapshots dos ultimos 90d)
+// Usado no picker de "quais eventos contam como conversao" pra essa conta.
+app.get('/api/meta/accounts/:accountId/action-types', auth, (req, res) => {
+  try {
+    const { accountId } = req.params
+    // Pega snapshots dos ultimos 90 dias e coleta action_types unicos com contagem
+    const end = new Date(); end.setDate(end.getDate() - 1)
+    const start = new Date(end); start.setDate(start.getDate() - 90)
+    const since = fmtDate(start), until = fmtDate(end)
+
+    const allSnaps = agg.getAllAdInsights(accountId, since, until)
+    const counts = new Map()
+    for (const ins of allSnaps) {
+      if (!ins.actions) continue
+      for (const a of ins.actions) {
+        const prev = counts.get(a.action_type) || 0
+        counts.set(a.action_type, prev + parseFloat(a.value || 0))
+      }
+    }
+
+    // Ordena por volume, retorna top 100
+    const sorted = Array.from(counts.entries())
+      .map(([action_type, total]) => ({ action_type, total }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 100)
+
+    res.json({ action_types: sorted })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Preview HTML de um ad — retorna iframe pronto do Meta
+// Formatos: DESKTOP_FEED_STANDARD, MOBILE_FEED_STANDARD, INSTAGRAM_STANDARD, INSTAGRAM_STORY, INSTAGRAM_REELS
+app.get('/api/meta/ads/:adId/preview', auth, async (req, res) => {
+  try {
+    const { adId } = req.params
+    const format = req.query.format || 'DESKTOP_FEED_STANDARD'
+
+    const data = await metaFetch(`/${adId}/previews`, { ad_format: format })
+    const html = (data.data && data.data[0] && data.data[0].body) || ''
+    res.json({ html, format })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // =============================================
 // GOOGLE ADS API
 // =============================================
@@ -1535,7 +1858,7 @@ app.get('/api/google-ads/accounts', auth, async (req, res) => {
 })
 
 // Google Ads campaign performance (with Quality Score, Impression Share, period comparison)
-app.get('/api/google-ads/:customerId/campaigns', auth, async (req, res) => {
+app.get('/api/google-ads/:customerId/campaigns', auth, cacheMiddleware, async (req, res) => {
   try {
     const { customerId } = req.params
     const { days = '30', since, until } = req.query
@@ -1616,7 +1939,7 @@ app.get('/api/google-ads/:customerId/campaigns', auth, async (req, res) => {
 })
 
 // Google Ads daily performance (with conversions + previous period)
-app.get('/api/google-ads/:customerId/daily', auth, async (req, res) => {
+app.get('/api/google-ads/:customerId/daily', auth, cacheMiddleware, async (req, res) => {
   try {
     const { customerId } = req.params
     const { days = '30', since, until } = req.query
@@ -1656,7 +1979,7 @@ app.get('/api/google-ads/:customerId/daily', auth, async (req, res) => {
 })
 
 // Google Ads keyword performance
-app.get('/api/google-ads/:customerId/keywords', auth, async (req, res) => {
+app.get('/api/google-ads/:customerId/keywords', auth, cacheMiddleware, async (req, res) => {
   try {
     const { customerId } = req.params
     const { days = '30', since, until } = req.query
@@ -1694,7 +2017,7 @@ app.get('/api/google-ads/:customerId/keywords', auth, async (req, res) => {
 })
 
 // Google Ads search terms report
-app.get('/api/google-ads/:customerId/search-terms', auth, async (req, res) => {
+app.get('/api/google-ads/:customerId/search-terms', auth, cacheMiddleware, async (req, res) => {
   try {
     const { customerId } = req.params
     const { days = '30', since, until } = req.query
@@ -1730,7 +2053,7 @@ app.get('/api/google-ads/:customerId/search-terms', auth, async (req, res) => {
 })
 
 // Google Ads device performance
-app.get('/api/google-ads/:customerId/devices', auth, async (req, res) => {
+app.get('/api/google-ads/:customerId/devices', auth, cacheMiddleware, async (req, res) => {
   try {
     const { customerId } = req.params
     const { days = '30', since, until } = req.query
@@ -1774,7 +2097,7 @@ app.get('/api/google-ads/:customerId/devices', auth, async (req, res) => {
 })
 
 // Google Ads hour-of-day performance
-app.get('/api/google-ads/:customerId/hourly', auth, async (req, res) => {
+app.get('/api/google-ads/:customerId/hourly', auth, cacheMiddleware, async (req, res) => {
   try {
     const { customerId } = req.params
     const { days = '30', since, until } = req.query
@@ -1815,8 +2138,32 @@ app.get('/api/google-ads/:customerId/hourly', auth, async (req, res) => {
   }
 })
 
+// Lista conversion actions configuradas no Google Ads (pro picker do Overview)
+// Retorna id + name + category — leve, so pra popular checkboxes.
+app.get('/api/google-ads/:customerId/conversion-actions', auth, cacheMiddleware, async (req, res) => {
+  try {
+    const { customerId } = req.params
+    const results = await gaqlQuery(customerId, `
+      SELECT conversion_action.id, conversion_action.name, conversion_action.category,
+             conversion_action.status, conversion_action.type
+      FROM conversion_action
+      WHERE conversion_action.status = 'ENABLED'
+      LIMIT 200
+    `)
+    const actions = results.map(r => ({
+      id: r.conversionAction?.id || '',
+      name: r.conversionAction?.name || '',
+      category: r.conversionAction?.category || '',
+      type: r.conversionAction?.type || '',
+    })).filter(a => a.id)
+    res.json({ actions })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // Google Ads conversion actions breakdown
-app.get('/api/google-ads/:customerId/conversions', auth, async (req, res) => {
+app.get('/api/google-ads/:customerId/conversions', auth, cacheMiddleware, async (req, res) => {
   try {
     const { customerId } = req.params
     const { days = '30', since, until } = req.query
@@ -1909,7 +2256,7 @@ app.get('/api/analytics/properties', auth, (req, res) => {
 })
 
 // GA4 main report (KPIs + comparison + daily + sources + pages + devices)
-app.get('/api/analytics/:propertyId/report', auth, async (req, res) => {
+app.get('/api/analytics/:propertyId/report', auth, cacheMiddleware, async (req, res) => {
   try {
     const { propertyId } = req.params
     const { days = '7', since, until } = req.query
@@ -2346,7 +2693,7 @@ app.get('/api/kiwify/products', auth, async (req, res) => {
 // OVERVIEW (Aggregated data from all sources)
 // =============================================
 
-app.get('/api/overview/:accountId', auth, async (req, res) => {
+app.get('/api/overview/:accountId', auth, cacheMiddleware, async (req, res) => {
   try {
     const { accountId } = req.params
     const accountName = req.query.name || ''
@@ -2546,16 +2893,38 @@ app.get('/api/overview/:accountId', auth, async (req, res) => {
           allPages = allPages.concat(data.data || [])
           url = data.paging?.next || null
         }
-        const lower = accountName.toLowerCase()
-        const cleaned = lower.replace(/^(ca\s*-?\s*|[\d]+\s*-\s*)/i, '').trim()
-        const words = cleaned.split(/[\s\-]+/).filter(w => w.length >= 3)
-        const match = allPages.find(p => {
-          if (!p.instagram_business_account) return false
-          const pageLower = (p.name || '').toLowerCase()
-          const userLower = (p.instagram_business_account.username || '').toLowerCase()
-          return words.some(w => pageLower.includes(w) || userLower.includes(w))
-        })
-        if (!match) return { available: false }
+
+        // Resolve match: 1) core_ig_page_id explicito do Hub (match exato) → 2) fuzzy legacy
+        // Se cliente esta no Hub SEM core_ig_page_id vinculado, retorna unavailable
+        // (evita cross-contamination: nao mostrar conta de OUTRO cliente porque o nome bateu).
+        const hubCfg = getHubClientConfig(accountName)
+        const pinnedIgPageId = hubCfg?.core_ig_page_id?.trim() || null
+        let match = null
+
+        if (pinnedIgPageId) {
+          // Match exato pelo ID vinculado no Hub — aceita page_id ou instagram_business_account.id
+          match = allPages.find(p =>
+            p.id === pinnedIgPageId ||
+            p.instagram_business_account?.id === pinnedIgPageId
+          )
+          if (!match) return { available: false, reason: 'ig-not-accessible', pinnedIgPageId }
+        } else if (hubCfg) {
+          // Cliente esta no Hub mas nao vinculou pagina IG → nao mostra dados de outra conta
+          return { available: false, reason: 'not-linked-in-hub' }
+        } else {
+          // Fallback fuzzy: legacy pra clientes fora do Hub (ex: hardcoded ALLOWED_CLIENTS antigos)
+          const lower = accountName.toLowerCase()
+          const cleaned = lower.replace(/^(ca\s*-?\s*|[\d]+\s*-\s*)/i, '').trim()
+          const words = cleaned.split(/[\s\-]+/).filter(w => w.length >= 3)
+          match = allPages.find(p => {
+            if (!p.instagram_business_account) return false
+            const pageLower = (p.name || '').toLowerCase()
+            const userLower = (p.instagram_business_account.username || '').toLowerCase()
+            return words.some(w => pageLower.includes(w) || userLower.includes(w))
+          })
+          if (!match) return { available: false }
+        }
+
         const igId = match.instagram_business_account.id
         const followers = match.instagram_business_account.followers_count || 0
         // Get reach + engagement
@@ -2748,6 +3117,484 @@ if (fs.existsSync(distPath)) {
   })
   console.log('[Dros Core] Serving frontend from /core/')
 }
+
+// =============================================================================
+// FASE 0 — ENDPOINTS CACHED (le do SQLite, formato compativel com /meta/*)
+// =============================================================================
+
+function resolveDateRange(days, since, until) {
+  if (since && until) return { since, until }
+  // ultimos N dias ate ontem (D-1)
+  const end = new Date(); end.setDate(end.getDate() - 1)
+  const start = new Date(end); start.setDate(start.getDate() - parseInt(days) + 1)
+  return { since: fmtDate(start), until: fmtDate(end) }
+}
+
+function calcPreviousRange(range) {
+  const start = new Date(range.since + 'T00:00:00')
+  const end = new Date(range.until + 'T00:00:00')
+  const diffDays = Math.ceil((end - start) / 86400000) + 1
+  const prevEnd = new Date(start); prevEnd.setDate(prevEnd.getDate() - 1)
+  const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - diffDays + 1)
+  return { since: fmtDate(prevStart), until: fmtDate(prevEnd) }
+}
+
+// Insights agregados por nivel (account/campaign) — equivalente ao /insights/compare
+app.get('/api/meta/cached/accounts/:accountId/insights/compare', auth, (req, res) => {
+  try {
+    const { accountId } = req.params
+    const { days = '30', level = 'account', since, until } = req.query
+    const current = resolveDateRange(days, since, until)
+    const previous = calcPreviousRange(current)
+
+    const currentData = level === 'campaign'
+      ? agg.getCampaignInsights(accountId, current.since, current.until)
+      : agg.getAccountInsights(accountId, current.since, current.until)
+    const previousData = level === 'campaign'
+      ? agg.getCampaignInsights(accountId, previous.since, previous.until)
+      : agg.getAccountInsights(accountId, previous.since, previous.until)
+
+    res.json({ current: currentData, previous: previousData, ranges: { current, previous } })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Insights por dia (para grafico) — equivalente ao /insights/daily-compare
+app.get('/api/meta/cached/accounts/:accountId/insights/daily-compare', auth, (req, res) => {
+  try {
+    const { accountId } = req.params
+    const { days = '30', since, until } = req.query
+    const current = resolveDateRange(days, since, until)
+    const previous = calcPreviousRange(current)
+
+    res.json({
+      current: agg.getDailyAccountInsights(accountId, current.since, current.until),
+      previous: agg.getDailyAccountInsights(accountId, previous.since, previous.until),
+      ranges: { current, previous },
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Adsets de campanha com insights agregados
+app.get('/api/meta/cached/campaigns/:campaignId/adsets', auth, (req, res) => {
+  try {
+    const { campaignId } = req.params
+    const { days = '30', since, until, accountId } = req.query
+    if (!accountId) return res.status(400).json({ error: 'accountId query param required' })
+    const range = resolveDateRange(days, since, until)
+
+    const adsets = agg.getAdsets(accountId, campaignId)
+    const insights = agg.getAdsetInsightsByCampaign(accountId, campaignId, range.since, range.until)
+    const insightsMap = new Map(insights.map(i => [i.adset_id, i]))
+
+    const data = adsets.map(a => ({ ...a, insight: insightsMap.get(a.id) || null }))
+    res.json({ data, ranges: { current: range } })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Ads de adset com insights + creative
+app.get('/api/meta/cached/adsets/:adsetId/ads', auth, (req, res) => {
+  try {
+    const { adsetId } = req.params
+    const { days = '30', since, until, accountId } = req.query
+    if (!accountId) return res.status(400).json({ error: 'accountId query param required' })
+    const range = resolveDateRange(days, since, until)
+
+    const ads = agg.getAdsWithCreatives(accountId, adsetId)
+    const insights = agg.getAdInsightsByAdset(accountId, adsetId, range.since, range.until)
+    const insightsMap = new Map(insights.map(i => [i.ad_id, i]))
+
+    const data = ads.map(ad => ({ ...ad, insight: insightsMap.get(ad.id) || null }))
+    res.json({ data, ranges: { current: range } })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Top ads (todos os ads da conta com insights + creative, frontend ordena)
+app.get('/api/meta/cached/accounts/:accountId/top-ads', auth, (req, res) => {
+  try {
+    const { accountId } = req.params
+    const { days = '30', since, until } = req.query
+    const range = resolveDateRange(days, since, until)
+
+    const ads = agg.getAllAdsWithCreatives(accountId)
+    const insights = agg.getAllAdInsights(accountId, range.since, range.until)
+    const insightsMap = new Map(insights.map(i => [i.ad_id, i]))
+
+    const data = ads.map(ad => ({ ...ad, insight: insightsMap.get(ad.id) || null }))
+      .filter(ad => ad.insight && parseFloat(ad.insight.spend || '0') > 0)
+
+    res.json({ data, ranges: { current: range } })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Campanhas da conta (estrutura do cache)
+app.get('/api/meta/cached/accounts/:accountId/campaigns', auth, (req, res) => {
+  try {
+    res.json({ data: agg.getCampaigns(req.params.accountId) })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Meta info: quando foi a ultima sync dessa conta
+app.get('/api/meta/cached/accounts/:accountId/status', auth, (req, res) => {
+  try {
+    const latest = agg.getAccountLastSync(req.params.accountId)
+    res.json({ last_update: latest })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// =============================================================================
+// SYNC MANUAL (botao "Sincronizar" do dashboard)
+// =============================================================================
+app.post('/api/meta/sync/:accountId', auth, async (req, res) => {
+  try {
+    const { accountId } = req.params
+    const daysBack = parseInt(req.query.days || '2')
+    const result = await syncAccount(accountId, META_TOKEN, daysBack)
+    res.json({ ok: true, ...result })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// =============================================================================
+// FASE A — DASHBOARD CONFIG (personalizacao)
+// =============================================================================
+
+app.get('/api/dashboard/config/:accountId', auth, (req, res) => {
+  try {
+    const cfg = getDashboardConfig(req.params.accountId)
+    res.json(cfg)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.put('/api/dashboard/config/:accountId', auth, (req, res) => {
+  try {
+    const { config } = req.body || {}
+    if (!config) return res.status(400).json({ error: 'config required in body' })
+    saveDashboardConfig(req.params.accountId, config)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.post('/api/dashboard/config/:accountId/publish', auth, (req, res) => {
+  try {
+    const { accountId } = req.params
+    const existing = getDashboardConfig(accountId)
+    let slug = existing.public_slug
+    if (!slug) {
+      slug = nanoid(12)
+      setDashboardSlug(accountId, slug)
+    }
+    res.json({ slug })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+app.delete('/api/dashboard/config/:accountId/publish', auth, (req, res) => {
+  try {
+    setDashboardSlug(req.params.accountId, null)
+    res.json({ ok: true })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Templates
+app.get('/api/dashboard/templates', auth, (_req, res) => res.json({ data: listTemplates() }))
+app.post('/api/dashboard/templates', auth, (req, res) => {
+  const { name, config } = req.body || {}
+  if (!name || !config) return res.status(400).json({ error: 'name + config required' })
+  const id = saveTemplate(name, config)
+  res.json({ id })
+})
+app.get('/api/dashboard/templates/:id', auth, (req, res) => {
+  const cfg = getTemplate(parseInt(req.params.id))
+  if (!cfg) return res.status(404).json({ error: 'not found' })
+  res.json({ config: cfg })
+})
+app.delete('/api/dashboard/templates/:id', auth, (req, res) => {
+  removeTemplate(parseInt(req.params.id))
+  res.json({ ok: true })
+})
+
+// =============================================================================
+// FASE D — ROTAS PUBLICAS (link publico sem login, escopadas por slug)
+// =============================================================================
+
+// Middleware: resolve slug -> accountId + config, sem exigir auth
+// Valida tambem que o cliente ainda esta ATIVO no Hub — se foi inativado,
+// o link publico automaticamente para de funcionar.
+function publicResolve(req, res, next) {
+  const { slug } = req.params
+  const found = getConfigBySlug(slug)
+  if (!found) return res.status(404).json({ error: 'link publico nao encontrado' })
+
+  // Checa se cliente ainda tem conta Meta configurada e ativa no Hub
+  const accountIdWithPrefix = found.account_id.startsWith('act_') ? found.account_id : `act_${found.account_id}`
+  const accountIdWithoutPrefix = found.account_id.replace(/^act_/, '')
+  const hubClient = HUB_CLIENTS.find(c => {
+    const cid = (c.core_meta_account_id || '').trim()
+    return cid && (cid === accountIdWithPrefix || cid === accountIdWithoutPrefix || `act_${cid}` === accountIdWithPrefix)
+  })
+
+  if (!hubClient) {
+    return res.status(410).json({ error: 'link desativado pela agencia' })
+  }
+
+  req.publicAccountId = found.account_id
+  req.publicConfig = found.config
+  req.publicHubClient = hubClient
+  next()
+}
+
+// Info + config do dashboard publico
+app.get('/api/public/dashboard/:slug', publicResolve, (req, res) => {
+  // Puxa nome da conta Meta se disponivel (best effort)
+  res.json({
+    account_id: req.publicAccountId,
+    config: req.publicConfig,
+    last_update: getAccountLatestUpdate(req.publicAccountId),
+  })
+})
+
+// Insights compare (public)
+app.get('/api/public/dashboard/:slug/insights/compare', publicResolve, (req, res) => {
+  try {
+    const accountId = req.publicAccountId
+    const { days = '30', level = 'account', since, until } = req.query
+    const current = resolveDateRange(days, since, until)
+    const previous = calcPreviousRange(current)
+    const currentData = level === 'campaign'
+      ? agg.getCampaignInsights(accountId, current.since, current.until)
+      : agg.getAccountInsights(accountId, current.since, current.until)
+    const previousData = level === 'campaign'
+      ? agg.getCampaignInsights(accountId, previous.since, previous.until)
+      : agg.getAccountInsights(accountId, previous.since, previous.until)
+    res.json({ current: currentData, previous: previousData, ranges: { current, previous } })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+app.get('/api/public/dashboard/:slug/insights/daily-compare', publicResolve, (req, res) => {
+  try {
+    const accountId = req.publicAccountId
+    const { days = '30', since, until } = req.query
+    const current = resolveDateRange(days, since, until)
+    const previous = calcPreviousRange(current)
+    res.json({
+      current: agg.getDailyAccountInsights(accountId, current.since, current.until),
+      previous: agg.getDailyAccountInsights(accountId, previous.since, previous.until),
+      ranges: { current, previous },
+    })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+app.get('/api/public/dashboard/:slug/top-ads', publicResolve, (req, res) => {
+  try {
+    const accountId = req.publicAccountId
+    const { days = '30', since, until } = req.query
+    const range = resolveDateRange(days, since, until)
+    const ads = agg.getAllAdsWithCreatives(accountId)
+    const insights = agg.getAllAdInsights(accountId, range.since, range.until)
+    const insightsMap = new Map(insights.map(i => [i.ad_id, i]))
+    const data = ads.map(ad => ({ ...ad, insight: insightsMap.get(ad.id) || null }))
+      .filter(ad => ad.insight && parseFloat(ad.insight.spend || '0') > 0)
+    res.json({ data, ranges: { current: range } })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+app.get('/api/public/dashboard/:slug/campaigns', publicResolve, (req, res) => {
+  try {
+    res.json({ data: agg.getCampaigns(req.publicAccountId) })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+app.get('/api/public/dashboard/:slug/campaigns/:campaignId/adsets', publicResolve, (req, res) => {
+  try {
+    const accountId = req.publicAccountId
+    const { days = '30', since, until } = req.query
+    const range = resolveDateRange(days, since, until)
+    const adsets = agg.getAdsets(accountId, req.params.campaignId)
+    const insights = agg.getAdsetInsightsByCampaign(accountId, req.params.campaignId, range.since, range.until)
+    const map = new Map(insights.map(i => [i.adset_id, i]))
+    res.json({ data: adsets.map(a => ({ ...a, insight: map.get(a.id) || null })) })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+app.get('/api/public/dashboard/:slug/adsets/:adsetId/ads', publicResolve, (req, res) => {
+  try {
+    const accountId = req.publicAccountId
+    const { days = '30', since, until } = req.query
+    const range = resolveDateRange(days, since, until)
+    const ads = agg.getAdsWithCreatives(accountId, req.params.adsetId)
+    const insights = agg.getAdInsightsByAdset(accountId, req.params.adsetId, range.since, range.until)
+    const map = new Map(insights.map(i => [i.ad_id, i]))
+    res.json({ data: ads.map(ad => ({ ...ad, insight: map.get(ad.id) || null })) })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
+// =============================================================================
+// CRON — snapshot diario 04:00 + warmup cache de TODAS as APIs por cliente
+// =============================================================================
+
+// Warmup: chama endpoints Google Ads/IG/GA4/Overview pra cada cliente do Hub
+// pra popular cache HTTP. Roda depois do snapshot Meta.
+// So os endpoints "core" que a maioria das aba abre — nao inclui keywords/search-terms
+// que sao secundarios.
+async function warmupCacheForClient(client, adminToken) {
+  const jobs = []
+  const days = 30  // range mais comum que o dashboard abre
+
+  // Overview (agrega tudo — chamada mais critica)
+  if (client.name) {
+    jobs.push(fetch(`http://localhost:${PORT}/api/overview/${encodeURIComponent(client.core_meta_account_id || client.name)}?days=${days}&accountName=${encodeURIComponent(client.name)}&refresh=1`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }).catch(() => null))
+  }
+
+  // Google Ads (se configurado)
+  if (client.core_gads_customer_id) {
+    const cid = client.core_gads_customer_id.replace(/-/g, '')
+    const endpoints = ['campaigns', 'daily', 'conversions']  // essenciais pro dashboard
+    for (const ep of endpoints) {
+      jobs.push(fetch(`http://localhost:${PORT}/api/google-ads/${cid}/${ep}?days=${days}&refresh=1`, {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      }).catch(() => null))
+    }
+  }
+
+  // Instagram (se configurado)
+  if (client.core_ig_page_id) {
+    const ig = client.core_ig_page_id
+    jobs.push(fetch(`http://localhost:${PORT}/api/instagram/${ig}/profile?refresh=1`, { headers: { Authorization: `Bearer ${adminToken}` } }).catch(() => null))
+    jobs.push(fetch(`http://localhost:${PORT}/api/instagram/${ig}/insights?days=${days}&refresh=1`, { headers: { Authorization: `Bearer ${adminToken}` } }).catch(() => null))
+    jobs.push(fetch(`http://localhost:${PORT}/api/instagram/${ig}/media?limit=24&refresh=1`, { headers: { Authorization: `Bearer ${adminToken}` } }).catch(() => null))
+  }
+
+  // GA4 (se configurado)
+  if (client.core_ga4_property_id) {
+    jobs.push(fetch(`http://localhost:${PORT}/api/analytics/${client.core_ga4_property_id}/report?days=${days}&refresh=1`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    }).catch(() => null))
+  }
+
+  await Promise.allSettled(jobs)
+  return jobs.length
+}
+
+// Gera JWT admin pra chamar os proprios endpoints internamente
+function generateAdminToken() {
+  return jwt.sign({ id: 'cron', email: 'cron@internal', name: 'Cron', role: 'admin' }, JWT_SECRET, { expiresIn: '1h' })
+}
+
+async function runNightlySnapshot() {
+  console.log('[Snapshot cron] === iniciando ciclo noturno ===')
+  const startTime = Date.now()
+
+  // Fase 1: snapshot Meta Ads (SQLite estruturado, dados diarios granulares)
+  try {
+    let accounts = []
+    let url = `${META_BASE}/me/adaccounts?fields=id,name,account_status&limit=200&access_token=${META_TOKEN}`
+    while (url) {
+      const resp = await fetch(url)
+      const data = await resp.json()
+      if (data.error) throw new Error(data.error.message)
+      accounts.push(...(data.data || []))
+      url = data.paging?.next || null
+    }
+    console.log(`[Snapshot cron] Meta: ${accounts.length} contas encontradas`)
+    const result = await syncAllAccounts(accounts, META_TOKEN, 2)
+    console.log(`[Snapshot cron] Meta concluido: ok=${result.ok} err=${result.err}`)
+  } catch (err) {
+    console.error('[Snapshot cron] Meta falhou:', err.message)
+  }
+
+  // Fase 2: warmup cache HTTP das outras APIs (Google Ads / IG / GA4 / Overview)
+  // Roda pra cada cliente do Hub em batches de 2 (respeitar rate limits)
+  try {
+    await syncFromHub()  // garantir HUB_CLIENTS atualizado
+    const activeClients = HUB_CLIENTS.filter(c => c.core_meta_account_id || c.core_gads_customer_id || c.core_ig_page_id || c.core_ga4_property_id)
+    console.log(`[Snapshot cron] Warmup cache: ${activeClients.length} clientes ativos`)
+    const adminToken = generateAdminToken()
+
+    const BATCH = 2
+    let warmed = 0
+    for (let i = 0; i < activeClients.length; i += BATCH) {
+      const batch = activeClients.slice(i, i + BATCH)
+      const results = await Promise.allSettled(batch.map(c => warmupCacheForClient(c, adminToken)))
+      warmed += results.filter(r => r.status === 'fulfilled').length
+      // Pausa 2s entre batches pra dar folga aos APIs
+      if (i + BATCH < activeClients.length) await new Promise(r => setTimeout(r, 2000))
+    }
+    console.log(`[Snapshot cron] Warmup concluido: ${warmed}/${activeClients.length} clientes`)
+  } catch (err) {
+    console.error('[Snapshot cron] Warmup falhou:', err.message)
+  }
+
+  const totalSec = Math.round((Date.now() - startTime) / 1000)
+  console.log(`[Snapshot cron] === ciclo completo em ${totalSec}s ===`)
+}
+
+// 04:00 America/Sao_Paulo todo dia
+cron.schedule('0 4 * * *', runNightlySnapshot, { timezone: 'America/Sao_Paulo' })
+console.log('[Snapshot cron] agendado pra 04:00 America/Sao_Paulo diariamente')
+
+// Endpoint pra rodar warmup manual do cache (util pra testar sem esperar 4am)
+// Popula cache HTTP de todos os clientes ativos do Hub
+app.post('/api/cache/warmup', auth, async (_req, res) => {
+  try {
+    await syncFromHub()
+    const activeClients = HUB_CLIENTS.filter(c => c.core_meta_account_id || c.core_gads_customer_id || c.core_ig_page_id || c.core_ga4_property_id)
+    const adminToken = generateAdminToken()
+    const t0 = Date.now()
+    const BATCH = 2
+    let done = 0
+    for (let i = 0; i < activeClients.length; i += BATCH) {
+      const batch = activeClients.slice(i, i + BATCH)
+      const results = await Promise.allSettled(batch.map(c => warmupCacheForClient(c, adminToken)))
+      done += results.filter(r => r.status === 'fulfilled').length
+    }
+    res.json({ ok: true, clients_warmed: done, total: activeClients.length, seconds: Math.round((Date.now() - t0) / 1000) })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// Endpoint pra rodar sync geral manual (admin only)
+app.post('/api/meta/sync-all', auth, async (_req, res) => {
+  try {
+    let accounts = []
+    let url = `${META_BASE}/me/adaccounts?fields=id,name,account_status&limit=200&access_token=${META_TOKEN}`
+    while (url) {
+      const resp = await fetch(url)
+      const data = await resp.json()
+      if (data.error) throw new Error(data.error.message)
+      accounts.push(...(data.data || []))
+      url = data.paging?.next || null
+    }
+    const result = await syncAllAccounts(accounts, META_TOKEN, 2)
+    res.json({ ok: true, accounts: accounts.length, ...result })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
 
 const server = app.listen(PORT, () => {
   console.log(`[Dros Dashboard API] Running on http://localhost:${PORT}`)
