@@ -441,24 +441,56 @@ app.get('/api/meta/accounts/:accountId/insights/compare', auth, async (req, res)
     const fields = 'spend,impressions,clicks,cpc,cpm,ctr,reach,frequency,actions,cost_per_action_type,action_values'
     const levelFields = level === 'campaign' ? `campaign_id,campaign_name,${fields}` : fields
 
+    // Quando level='account', Meta API as vezes retorna spend menor que a soma real das campanhas
+    // (attribution/dedup interno). Solucao: sempre pedimos level='campaign' e agregamos no server.
+    const effectiveLevel = level === 'account' ? 'campaign' : level
+    const effectiveFields = level === 'account' ? `campaign_id,campaign_name,${fields}` : levelFields
+
     const [current, previous] = await Promise.all([
       metaFetch(`/${accountId}/insights`, {
-        fields: levelFields,
+        fields: effectiveFields,
         time_range: JSON.stringify(ranges.current),
-        level,
+        level: effectiveLevel,
         limit: '500',
       }).catch(() => ({ data: [] })),
       metaFetch(`/${accountId}/insights`, {
-        fields: levelFields,
+        fields: effectiveFields,
         time_range: JSON.stringify(ranges.previous),
-        level,
+        level: effectiveLevel,
         limit: '500',
       }).catch(() => ({ data: [] })),
     ])
 
+    // Se front pediu level='account', agrega as N campanhas em 1 unica linha
+    const aggregate = (rows) => {
+      if (!rows || rows.length === 0) return []
+      const agg = { spend: 0, impressions: 0, clicks: 0, reach: 0, actions: [], cost_per_action_type: [], action_values: [] }
+      const actionMap = {}, actionValueMap = {}
+      for (const r of rows) {
+        agg.spend += parseFloat(r.spend || 0)
+        agg.impressions += parseInt(r.impressions || 0)
+        agg.clicks += parseInt(r.clicks || 0)
+        agg.reach += parseInt(r.reach || 0)
+        for (const a of (r.actions || [])) actionMap[a.action_type] = (actionMap[a.action_type] || 0) + parseFloat(a.value || 0)
+        for (const a of (r.action_values || [])) actionValueMap[a.action_type] = (actionValueMap[a.action_type] || 0) + parseFloat(a.value || 0)
+      }
+      agg.actions = Object.entries(actionMap).map(([action_type, value]) => ({ action_type, value: String(value) }))
+      agg.action_values = Object.entries(actionValueMap).map(([action_type, value]) => ({ action_type, value: String(value) }))
+      agg.cost_per_action_type = agg.actions.map(a => ({ action_type: a.action_type, value: parseFloat(a.value) > 0 ? String(agg.spend / parseFloat(a.value)) : '0' }))
+      agg.ctr = agg.impressions > 0 ? String((agg.clicks / agg.impressions) * 100) : '0'
+      agg.cpc = agg.clicks > 0 ? String(agg.spend / agg.clicks) : '0'
+      agg.cpm = agg.impressions > 0 ? String((agg.spend / agg.impressions) * 1000) : '0'
+      agg.frequency = agg.reach > 0 ? String(agg.impressions / agg.reach) : '0'
+      agg.spend = String(agg.spend); agg.impressions = String(agg.impressions); agg.clicks = String(agg.clicks); agg.reach = String(agg.reach)
+      return [agg]
+    }
+
+    const currentData = level === 'account' ? aggregate(current.data || []) : (current.data || [])
+    const previousData = level === 'account' ? aggregate(previous.data || []) : (previous.data || [])
+
     res.json({
-      current: current.data || [],
-      previous: previous.data || [],
+      current: currentData,
+      previous: previousData,
       ranges,
     })
   } catch (err) {
