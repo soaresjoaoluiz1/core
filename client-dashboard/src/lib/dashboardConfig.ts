@@ -21,17 +21,23 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
 }
 
 export interface DashboardConfig {
-  cards: string[]              // ordem dos metric-keys nos cards do topo
-  funnel: string[]             // ordem das etapas do funil (metric-keys)
-  chartDefaultMetric: string   // metric-key default do grafico de barras
-  chartAvailableMetrics: string[]  // metric-keys que aparecem como tabs no grafico
-  table: string[]              // metric-keys das colunas da tabela de campanhas
-  topCreativesSort: string     // metric-key default do filtro de top criativos
-  sections: {
-    key: string                // 'cards' | 'chart' | 'funnel' | 'campaigns' | 'topCreatives'
-    visible: boolean
-    order: number
-  }[]
+  cards: string[]
+  funnel: string[]
+  chartDefaultMetric: string
+  chartAvailableMetrics: string[]
+  table: string[]
+  topCreativesSort: string
+  sections: { key: string; visible: boolean; order: number }[]
+  metaConversionActions?: string[]
+
+  // Config da aba Geral (Overview) — completamente separada da tab Meta
+  overview?: {
+    cards: string[]                    // metric-keys unificados (unified.spend, meta.conversas, gads.conversions, etc)
+    funnel: string[]                   // etapas unificadas
+    chartDefaultMetric: string
+    chartAvailableMetrics: string[]
+    gadsConversionActionIds?: string[] // ids de conversion actions do Google que somam em "conversoes"
+  }
 }
 
 // Config padrao (usada quando o cliente ainda nao personalizou)
@@ -49,6 +55,14 @@ export const DEFAULT_CONFIG: DashboardConfig = {
     { key: 'campaigns',    visible: true, order: 3 },
     { key: 'topCreatives', visible: true, order: 4 },
   ],
+  metaConversionActions: ['purchase', 'lead', 'onsite_conversion.messaging_conversation_started_7d'],
+  overview: {
+    cards: ['unified.spend', 'unified.impressions', 'unified.clicks', 'unified.conversions', 'unified.cpl', 'unified.revenue', 'unified.roas'],
+    funnel: ['unified.impressions', 'unified.clicks', 'ga4.sessions', 'unified.conversions'],
+    chartDefaultMetric: 'unified.spend',
+    chartAvailableMetrics: ['unified.spend', 'unified.impressions', 'unified.clicks', 'unified.conversions', 'ga4.sessions'],
+    gadsConversionActionIds: [],
+  },
 }
 
 // Merge parcial com defaults (garante que campos faltantes usem default)
@@ -62,6 +76,16 @@ export function mergeConfig(partial: Partial<DashboardConfig> | null | undefined
     table: partial.table?.length ? partial.table : DEFAULT_CONFIG.table,
     topCreativesSort: partial.topCreativesSort || DEFAULT_CONFIG.topCreativesSort,
     sections: partial.sections?.length ? partial.sections : [...DEFAULT_CONFIG.sections],
+    metaConversionActions: partial.metaConversionActions || DEFAULT_CONFIG.metaConversionActions,
+    overview: partial.overview
+      ? {
+          cards: partial.overview.cards?.length ? partial.overview.cards : DEFAULT_CONFIG.overview!.cards,
+          funnel: partial.overview.funnel?.length ? partial.overview.funnel : DEFAULT_CONFIG.overview!.funnel,
+          chartDefaultMetric: partial.overview.chartDefaultMetric || DEFAULT_CONFIG.overview!.chartDefaultMetric,
+          chartAvailableMetrics: partial.overview.chartAvailableMetrics?.length ? partial.overview.chartAvailableMetrics : DEFAULT_CONFIG.overview!.chartAvailableMetrics,
+          gadsConversionActionIds: partial.overview.gadsConversionActionIds || [],
+        }
+      : DEFAULT_CONFIG.overview,
   }
 }
 
@@ -110,4 +134,10 @@ export async function getAccountSyncStatus(accountId: string): Promise<{ last_up
 // Forca sync com Hub (pra pegar clientes novos sem esperar 10 min)
 export async function refreshHub(): Promise<{ ok: boolean; hub_clients: number; with_meta: number; with_ig: number; with_gads: number }> {
   return apiFetch(`/api/hub/refresh`, { method: 'POST' })
+}
+
+// Limpa cache HTTP (Google Ads/IG/GA4/overview) — usado pelo Sincronizar
+// scope: 'all' | 'google-ads' | 'instagram' | 'analytics' | 'overview'
+export async function clearApiCache(scope: 'all' | 'google-ads' | 'instagram' | 'analytics' | 'overview' = 'all'): Promise<{ ok: boolean; cleared: number; scope: string }> {
+  return apiFetch(`/api/cache/clear?scope=${scope}`, { method: 'POST' })
 }
