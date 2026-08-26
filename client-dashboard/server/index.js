@@ -505,26 +505,55 @@ app.get('/api/meta/accounts/:accountId/insights/daily-compare', auth, async (req
     const { days = '30', since, until } = req.query
     const ranges = getDateRanges(parseInt(days), since, until)
 
-    const fields = 'spend,impressions,clicks,cpc,ctr,reach,actions,action_values'
+    const fields = 'campaign_id,spend,impressions,clicks,cpc,ctr,reach,actions,action_values'
 
+    // Mesmo fix do /insights/compare: pedimos level=campaign e agregamos por dia
+    // pra evitar spend menor que o Meta retorna em level=account
     const [current, previous] = await Promise.all([
       metaFetch(`/${accountId}/insights`, {
         fields,
         time_range: JSON.stringify(ranges.current),
         time_increment: '1',
-        limit: '100',
+        level: 'campaign',
+        limit: '500',
       }).catch(() => ({ data: [] })),
       metaFetch(`/${accountId}/insights`, {
         fields,
         time_range: JSON.stringify(ranges.previous),
         time_increment: '1',
-        limit: '100',
+        level: 'campaign',
+        limit: '500',
       }).catch(() => ({ data: [] })),
     ])
 
+    // Agrupa por date_start: soma spend/impressions/clicks/reach + merge actions
+    const aggregateByDate = (rows) => {
+      const byDate = {}
+      for (const r of (rows || [])) {
+        const d = r.date_start
+        if (!byDate[d]) byDate[d] = { date_start: d, date_stop: r.date_stop || d, spend: 0, impressions: 0, clicks: 0, reach: 0, actions: [], action_values: [], _actMap: {}, _actVMap: {} }
+        const b = byDate[d]
+        b.spend += parseFloat(r.spend || 0)
+        b.impressions += parseInt(r.impressions || 0)
+        b.clicks += parseInt(r.clicks || 0)
+        b.reach += parseInt(r.reach || 0)
+        for (const a of (r.actions || [])) b._actMap[a.action_type] = (b._actMap[a.action_type] || 0) + parseFloat(a.value || 0)
+        for (const a of (r.action_values || [])) b._actVMap[a.action_type] = (b._actVMap[a.action_type] || 0) + parseFloat(a.value || 0)
+      }
+      return Object.values(byDate).map(b => {
+        b.actions = Object.entries(b._actMap).map(([action_type, value]) => ({ action_type, value: String(value) }))
+        b.action_values = Object.entries(b._actVMap).map(([action_type, value]) => ({ action_type, value: String(value) }))
+        b.ctr = b.impressions > 0 ? String((b.clicks / b.impressions) * 100) : '0'
+        b.cpc = b.clicks > 0 ? String(b.spend / b.clicks) : '0'
+        b.spend = String(b.spend); b.impressions = String(b.impressions); b.clicks = String(b.clicks); b.reach = String(b.reach)
+        delete b._actMap; delete b._actVMap
+        return b
+      }).sort((a, b) => a.date_start < b.date_start ? -1 : 1)
+    }
+
     res.json({
-      current: current.data || [],
-      previous: previous.data || [],
+      current: aggregateByDate(current.data),
+      previous: aggregateByDate(previous.data),
       ranges,
     })
   } catch (err) {

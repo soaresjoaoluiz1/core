@@ -104,9 +104,11 @@ export default function Dashboard() {
     const until = datePeriod === 'custom' ? customDateTo : undefined
 
     Promise.all([
-      fetchCompare(selectedAccount.id, days, 'account', since, until).catch(() => null),
-      fetchCompare(selectedAccount.id, days, 'campaign', since, until).catch(() => null),
-      fetchDailyCompare(selectedAccount.id, days, since, until).catch(() => null),
+      // useCache=false → bate direto no Meta API pra garantir valor certo (fix agregacao spend
+      // funciona no endpoint live). Cache dos snapshots estava com valor menor por bug antigo.
+      fetchCompare(selectedAccount.id, days, 'account', since, until, false).catch(() => null),
+      fetchCompare(selectedAccount.id, days, 'campaign', since, until, false).catch(() => null),
+      fetchDailyCompare(selectedAccount.id, days, since, until, false).catch(() => null),
     ])
       .then(([acct, camp, daily]) => {
         setCompareData(acct)
