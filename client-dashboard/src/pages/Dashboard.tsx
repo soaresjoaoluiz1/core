@@ -378,38 +378,39 @@ export default function Dashboard() {
                       <MetricCards current={current} previous={previous} cards={config.cards} />
                     </section>
 
-                    {/* GRAFICO DIARIO */}
-                    <section className={`dash-section ${editing ? 'is-editing' : ''}`}>
-                      {editing && (
-                        <div className="section-editor-bar">
-                          <span className="section-chip">Grafico diario</span>
-                          <MetricPicker label="Metricas do grafico" selected={config.chartAvailableMetrics} onChange={v => patchConfig({ chartAvailableMetrics: v })} />
-                          <MetricPicker label={`Default: ${config.chartDefaultMetric}`} selected={[config.chartDefaultMetric]} onChange={v => patchConfig({ chartDefaultMetric: v[0] || 'spend' })} singleSelect allowedKeys={config.chartAvailableMetrics} />
+                    {/* GRAFICO DIARIO + FUNIL lado a lado */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
+                      <section className={`dash-section ${editing ? 'is-editing' : ''}`} style={{ margin: 0 }}>
+                        {editing && (
+                          <div className="section-editor-bar">
+                            <span className="section-chip">Grafico diario</span>
+                            <MetricPicker label="Metricas do grafico" selected={config.chartAvailableMetrics} onChange={v => patchConfig({ chartAvailableMetrics: v })} />
+                            <MetricPicker label={`Default: ${config.chartDefaultMetric}`} selected={[config.chartDefaultMetric]} onChange={v => patchConfig({ chartDefaultMetric: v[0] || 'spend' })} singleSelect allowedKeys={config.chartAvailableMetrics} />
+                          </div>
+                        )}
+                        <div className="chart-card" style={{ height: '100%' }}>
+                          <SpendChart
+                            currentData={dailyCompare?.current || []}
+                            previousData={dailyCompare?.previous || []}
+                            defaultMetric={config.chartDefaultMetric}
+                            availableMetrics={config.chartAvailableMetrics}
+                          />
                         </div>
-                      )}
-                      <div className="chart-card">
-                        <SpendChart
-                          currentData={dailyCompare?.current || []}
-                          previousData={dailyCompare?.previous || []}
-                          defaultMetric={config.chartDefaultMetric}
-                          availableMetrics={config.chartAvailableMetrics}
-                        />
-                      </div>
-                    </section>
+                      </section>
 
-                    {/* FUNIL */}
-                    <section className={`dash-section ${editing ? 'is-editing' : ''}`}>
-                      {editing && (
-                        <div className="section-editor-bar">
-                          <span className="section-chip">Funil</span>
-                          <MetricPicker label="Etapas do funil" selected={config.funnel} onChange={v => patchConfig({ funnel: v })} />
+                      <section className={`dash-section ${editing ? 'is-editing' : ''}`} style={{ margin: 0 }}>
+                        {editing && (
+                          <div className="section-editor-bar">
+                            <span className="section-chip">Funil</span>
+                            <MetricPicker label="Etapas do funil" selected={config.funnel} onChange={v => patchConfig({ funnel: v })} />
+                          </div>
+                        )}
+                        <div className="chart-card" style={{ height: '100%' }}>
+                          <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, letterSpacing: '.02em' }}>Funil</h3>
+                          <FunnelChart insight={current} steps={config.funnel} />
                         </div>
-                      )}
-                      <div className="chart-card">
-                        <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, letterSpacing: '.02em' }}>Funil</h3>
-                        <FunnelChart insight={current} steps={config.funnel} />
-                      </div>
-                    </section>
+                      </section>
+                    </div>
 
                     {/* CAMPANHAS */}
                     <section className={`dash-section ${editing ? 'is-editing' : ''}`}>

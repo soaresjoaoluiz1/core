@@ -74,8 +74,14 @@ function flatSnapshots(accountId, level, since, until) {
 // ============ AGGREGATE por nivel ============
 
 export function getAccountInsights(accountId, since, until) {
-  const rows = flatSnapshots(accountId, 'account', since, until)
-  return aggregateInsights(rows)
+  // Fix: Meta API as vezes retorna spend agregado (level=account) MENOR que a soma real
+  // das campanhas (attribution/dedup interno). Solucao: agregar a partir dos snapshots
+  // de campanha, que refletem o valor exato mostrado no Ads Manager.
+  const campaignRows = flatSnapshots(accountId, 'campaign', since, until)
+  if (campaignRows.length > 0) return aggregateInsights(campaignRows)
+  // Fallback: se por algum motivo nao tem snapshots de campanha, usa os de account
+  const accountRows = flatSnapshots(accountId, 'account', since, until)
+  return aggregateInsights(accountRows)
 }
 
 export function getCampaignInsights(accountId, since, until) {
@@ -109,8 +115,18 @@ export function getAllAdInsights(accountId, since, until) {
 
 // Daily: retorna um insight por dia (nao agrega across dias)
 export function getDailyAccountInsights(accountId, since, until) {
-  const snaps = getSnapshotsInRange(accountId, 'account', since, until)
-  return snaps.flatMap(s => s.data.map(d => ({ ...d, date_start: s.date, date_stop: s.date })))
+  // Mesmo fix do getAccountInsights: soma spend por dia agregando dos snapshots de CAMPANHA
+  // (evita a discrepancia do Meta em level=account).
+  const campaignSnaps = getSnapshotsInRange(accountId, 'campaign', since, until)
+  if (campaignSnaps.length > 0) {
+    // Agrega por data: dentro de cada snapshot diario, soma spend/impressions/etc de todas as campanhas
+    return campaignSnaps.map(s => {
+      const agg = aggregateInsights(s.data || [])[0] || {}
+      return { ...agg, date_start: s.date, date_stop: s.date }
+    })
+  }
+  const accountSnaps = getSnapshotsInRange(accountId, 'account', since, until)
+  return accountSnaps.flatMap(s => s.data.map(d => ({ ...d, date_start: s.date, date_stop: s.date })))
 }
 
 // ============ ESTRUTURA + CRIATIVOS (do cache, com fallback aos snapshots) ============
