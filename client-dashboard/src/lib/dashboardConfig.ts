@@ -123,8 +123,8 @@ export async function fetchPublicDashboard(slug: string): Promise<{ account_id: 
 
 // ============ Sync manual ============
 
-export async function syncAccountNow(accountId: string): Promise<{ ok: number; errors: string[] }> {
-  return apiFetch(`/api/meta/sync/${accountId}?days=2`, { method: 'POST' })
+export async function syncAccountNow(accountId: string, days = 30): Promise<{ ok: number; errors: string[] }> {
+  return apiFetch(`/api/meta/sync/${accountId}?days=${days}`, { method: 'POST' })
 }
 
 export async function getAccountSyncStatus(accountId: string): Promise<{ last_update: string | null }> {

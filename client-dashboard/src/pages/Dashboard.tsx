@@ -23,6 +23,7 @@ import AnalyticsView from '../components/AnalyticsView'
 import OverviewView from '../components/OverviewView'
 import { Search, LogOut, BarChart3, Instagram, LineChart, LayoutDashboard, Calendar, ChevronsLeft, ChevronsRight, Settings2, RefreshCw, Share2, Check, Copy, Link as LinkIcon, X, Eye } from 'lucide-react'
 import { fetchDashboardConfig, saveDashboardConfig as saveConfigApi, publishDashboard, unpublishDashboard, syncAccountNow, getAccountSyncStatus, refreshHub, DEFAULT_CONFIG, type DashboardConfig } from '../lib/dashboardConfig'
+import { useToast } from '../components/Toast'
 import MetricPicker from '../components/MetricPicker'
 
 const DATE_OPTIONS = [
@@ -37,6 +38,7 @@ type ClientTab = 'overview' | 'ads' | 'instagram' | 'googleads' | 'analytics'
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
+  const { toast } = useToast()
   const [accounts, setAccounts] = useState<MetaAccount[]>([])
   const [selectedAccount, setSelectedAccount] = useState<MetaAccount | null>(null)
   const [clientTab, setClientTab] = useState<ClientTab>('overview')
@@ -104,11 +106,9 @@ export default function Dashboard() {
     const until = datePeriod === 'custom' ? customDateTo : undefined
 
     Promise.all([
-      // useCache=false → bate direto no Meta API pra garantir valor certo (fix agregacao spend
-      // funciona no endpoint live). Cache dos snapshots estava com valor menor por bug antigo.
-      fetchCompare(selectedAccount.id, days, 'account', since, until, false).catch(() => null),
-      fetchCompare(selectedAccount.id, days, 'campaign', since, until, false).catch(() => null),
-      fetchDailyCompare(selectedAccount.id, days, since, until, false).catch(() => null),
+      fetchCompare(selectedAccount.id, days, 'account', since, until).catch(() => null),
+      fetchCompare(selectedAccount.id, days, 'campaign', since, until).catch(() => null),
+      fetchDailyCompare(selectedAccount.id, days, since, until).catch(() => null),
     ])
       .then(([acct, camp, daily]) => {
         setCompareData(acct)
@@ -146,7 +146,7 @@ export default function Dashboard() {
     try {
       await saveConfigApi(selectedAccount.id, config)
       setEditing(false)
-    } catch (e) { console.error(e); alert('Erro ao salvar personalizacao') }
+    } catch (e: any) { console.error(e); toast(`Erro ao salvar personalizacao: ${e?.message || ''}`, 'error') }
     setSavingCfg(false)
   }
 
@@ -154,11 +154,14 @@ export default function Dashboard() {
     if (!selectedAccount) return
     setSyncing(true)
     try {
-      await syncAccountNow(selectedAccount.id)
+      // Puxa o range visivel (nao apenas 2 dias) — garante que snapshots antigos
+      // sejam sobrescritos com valores corretos que a Meta corrigiu depois
+      const days = getEffectiveDays()
+      const syncDays = Math.max(days, 30)  // minimo 30d pra cobrir correcoes posteriores
+      const result = await syncAccountNow(selectedAccount.id, syncDays)
       const s = await getAccountSyncStatus(selectedAccount.id)
       setLastSyncAt(s.last_update)
       // recarrega dados
-      const days = getEffectiveDays()
       const since = datePeriod === 'custom' ? customDateFrom : undefined
       const until = datePeriod === 'custom' ? customDateTo : undefined
       const [acct, camp, daily] = await Promise.all([
@@ -167,7 +170,15 @@ export default function Dashboard() {
         fetchDailyCompare(selectedAccount.id, days, since, until).catch(() => null),
       ])
       setCompareData(acct); setCampaignCompare(camp); setDailyCompare(daily); setLastUpdate(new Date())
-    } catch (e) { console.error(e); alert('Erro ao sincronizar') }
+      if (result.errors && result.errors.length > 0) {
+        toast(`Sincronizado com avisos:\n${result.errors.slice(0, 3).join('\n')}`, 'error', 8000)
+      } else {
+        toast(`Sincronizado — ${result.ok || 0} dias atualizados (${syncDays}d de janela)`, 'success')
+      }
+    } catch (e: any) {
+      console.error(e)
+      toast(`Erro ao sincronizar: ${e?.message || 'erro desconhecido'}`, 'error', 7000)
+    }
     setSyncing(false)
   }
 
@@ -177,7 +188,7 @@ export default function Dashboard() {
       const slug = await publishDashboard(selectedAccount.id)
       setPublicSlug(slug)
       setShowShareModal(true)
-    } catch (e) { alert('Erro ao publicar') }
+    } catch (e: any) { toast(`Erro ao publicar: ${e?.message || ''}`, 'error') }
   }
 
   const handleUnpublish = async () => {
@@ -186,7 +197,7 @@ export default function Dashboard() {
       await unpublishDashboard(selectedAccount.id)
       setPublicSlug(null)
       setShowShareModal(false)
-    } catch (e) { alert('Erro ao remover publicacao') }
+    } catch (e: any) { toast(`Erro ao remover publicacao: ${e?.message || ''}`, 'error') }
   }
 
   const publicUrl = publicSlug ? `${window.location.origin}/core/public/${publicSlug}` : null
@@ -242,11 +253,11 @@ export default function Dashboard() {
             onClick={async () => {
               try {
                 const r = await refreshHub()
-                alert(`Sincronizado com Hub:\n${r.hub_clients} clientes\n${r.with_meta} com Meta\n${r.with_ig} com Instagram\n${r.with_gads} com Google Ads`)
+                toast(`Sincronizado com Hub: ${r.hub_clients} clientes · ${r.with_meta} Meta · ${r.with_ig} IG · ${r.with_gads} Google Ads`, 'success', 6000)
                 const accs = await fetchAccounts()
                 setAccounts(accs)
                 if (!selectedAccount && accs.length > 0) setSelectedAccount(accs[0])
-              } catch (e: any) { alert('Erro ao atualizar do Hub: ' + e.message) }
+              } catch (e: any) { toast('Erro ao atualizar do Hub: ' + (e?.message || ''), 'error') }
             }}
           ><RefreshCw size={16} /></button>
           <button className="logout-btn" onClick={logout} title="Sair"><LogOut size={16} /></button>
@@ -477,7 +488,7 @@ export default function Dashboard() {
                   {publicUrl && (
                     <div className="share-link-box">
                       <code>{publicUrl}</code>
-                      <button className="btn-tool" onClick={() => { navigator.clipboard.writeText(publicUrl); alert('Link copiado!') }}>
+                      <button className="btn-tool" onClick={() => { navigator.clipboard.writeText(publicUrl); toast('Link copiado pra area de transferencia', 'success', 2500) }}>
                         <Copy size={13} /> Copiar
                       </button>
                       <a className="btn-tool" href={publicUrl} target="_blank" rel="noreferrer"><Eye size={13} /> Abrir</a>

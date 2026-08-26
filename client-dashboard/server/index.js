@@ -3322,7 +3322,7 @@ app.get('/api/meta/cached/accounts/:accountId/status', auth, (req, res) => {
 app.post('/api/meta/sync/:accountId', auth, async (req, res) => {
   try {
     const { accountId } = req.params
-    const daysBack = parseInt(req.query.days || '2')
+    const daysBack = parseInt(req.query.days || '30')
     const result = await syncAccount(accountId, META_TOKEN, daysBack)
     res.json({ ok: true, ...result })
   } catch (err) {
@@ -3581,7 +3581,7 @@ async function runNightlySnapshot() {
       url = data.paging?.next || null
     }
     console.log(`[Snapshot cron] Meta: ${accounts.length} contas encontradas`)
-    const result = await syncAllAccounts(accounts, META_TOKEN, 2)
+    const result = await syncAllAccounts(accounts, META_TOKEN, 7)
     console.log(`[Snapshot cron] Meta concluido: ok=${result.ok} err=${result.err}`)
   } catch (err) {
     console.error('[Snapshot cron] Meta falhou:', err.message)
@@ -3650,7 +3650,7 @@ app.post('/api/meta/sync-all', auth, async (_req, res) => {
       accounts.push(...(data.data || []))
       url = data.paging?.next || null
     }
-    const result = await syncAllAccounts(accounts, META_TOKEN, 2)
+    const result = await syncAllAccounts(accounts, META_TOKEN, 7)
     res.json({ ok: true, accounts: accounts.length, ...result })
   } catch (err) {
     res.status(500).json({ error: err.message })

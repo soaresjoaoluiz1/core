@@ -238,7 +238,7 @@ export async function updateStructureAndCreatives(accountId, token) {
  * Rotina completa: puxa dias faltantes ate D-1 pra 1 conta.
  * daysBack: quantos dias pra tras verificar (backfill inicial usa 90, cron diario usa 2).
  */
-export async function syncAccount(accountId, token, daysBack = 2) {
+export async function syncAccount(accountId, token, daysBack = 30) {
   const today = new Date()
   const end = new Date(today); end.setDate(end.getDate() - 1)  // ontem
   const start = new Date(end); start.setDate(start.getDate() - daysBack + 1)
