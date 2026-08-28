@@ -22,8 +22,7 @@ import GoogleAdsView from '../components/GoogleAdsView'
 import AnalyticsView from '../components/AnalyticsView'
 import OverviewView from '../components/OverviewView'
 import { Search, LogOut, BarChart3, Instagram, LineChart, LayoutDashboard, Calendar, ChevronsLeft, ChevronsRight, Settings2, RefreshCw, Share2, Check, Copy, Link as LinkIcon, X, Eye } from 'lucide-react'
-import { fetchDashboardConfig, saveDashboardConfig as saveConfigApi, publishDashboard, unpublishDashboard, syncAccountNow, getAccountSyncStatus, refreshHub, DEFAULT_CONFIG, type DashboardConfig } from '../lib/dashboardConfig'
-import { useToast } from '../components/Toast'
+import { fetchDashboardConfig, saveDashboardConfig as saveConfigApi, publishDashboard, unpublishDashboard, syncAccountNow, getAccountSyncStatus, refreshHub, clearApiCache, DEFAULT_CONFIG, type DashboardConfig } from '../lib/dashboardConfig'
 import MetricPicker from '../components/MetricPicker'
 
 const DATE_OPTIONS = [
@@ -38,7 +37,6 @@ type ClientTab = 'overview' | 'ads' | 'instagram' | 'googleads' | 'analytics'
 
 export default function Dashboard() {
   const { user, logout } = useAuth()
-  const { toast } = useToast()
   const [accounts, setAccounts] = useState<MetaAccount[]>([])
   const [selectedAccount, setSelectedAccount] = useState<MetaAccount | null>(null)
   const [clientTab, setClientTab] = useState<ClientTab>('overview')
@@ -146,7 +144,7 @@ export default function Dashboard() {
     try {
       await saveConfigApi(selectedAccount.id, config)
       setEditing(false)
-    } catch (e: any) { console.error(e); toast(`Erro ao salvar personalizacao: ${e?.message || ''}`, 'error') }
+    } catch (e) { console.error(e); alert('Erro ao salvar personalizacao') }
     setSavingCfg(false)
   }
 
@@ -154,14 +152,14 @@ export default function Dashboard() {
     if (!selectedAccount) return
     setSyncing(true)
     try {
-      // Puxa o range visivel (nao apenas 2 dias) — garante que snapshots antigos
-      // sejam sobrescritos com valores corretos que a Meta corrigiu depois
-      const days = getEffectiveDays()
-      const syncDays = Math.max(days, 30)  // minimo 30d pra cobrir correcoes posteriores
-      const result = await syncAccountNow(selectedAccount.id, syncDays)
+      // Sync Meta ads + limpa cache HTTP das outras APIs
+      await Promise.all([
+        syncAccountNow(selectedAccount.id),
+        clearApiCache('all'),  // limpa google-ads/instagram/analytics/overview cache
+      ])
       const s = await getAccountSyncStatus(selectedAccount.id)
       setLastSyncAt(s.last_update)
-      // recarrega dados
+      const days = getEffectiveDays()
       const since = datePeriod === 'custom' ? customDateFrom : undefined
       const until = datePeriod === 'custom' ? customDateTo : undefined
       const [acct, camp, daily] = await Promise.all([
@@ -170,15 +168,7 @@ export default function Dashboard() {
         fetchDailyCompare(selectedAccount.id, days, since, until).catch(() => null),
       ])
       setCompareData(acct); setCampaignCompare(camp); setDailyCompare(daily); setLastUpdate(new Date())
-      if (result.errors && result.errors.length > 0) {
-        toast(`Sincronizado com avisos:\n${result.errors.slice(0, 3).join('\n')}`, 'error', 8000)
-      } else {
-        toast(`Sincronizado — ${result.ok || 0} dias atualizados (${syncDays}d de janela)`, 'success')
-      }
-    } catch (e: any) {
-      console.error(e)
-      toast(`Erro ao sincronizar: ${e?.message || 'erro desconhecido'}`, 'error', 7000)
-    }
+    } catch (e) { console.error(e); alert('Erro ao sincronizar') }
     setSyncing(false)
   }
 
@@ -188,7 +178,7 @@ export default function Dashboard() {
       const slug = await publishDashboard(selectedAccount.id)
       setPublicSlug(slug)
       setShowShareModal(true)
-    } catch (e: any) { toast(`Erro ao publicar: ${e?.message || ''}`, 'error') }
+    } catch (e) { alert('Erro ao publicar') }
   }
 
   const handleUnpublish = async () => {
@@ -197,7 +187,7 @@ export default function Dashboard() {
       await unpublishDashboard(selectedAccount.id)
       setPublicSlug(null)
       setShowShareModal(false)
-    } catch (e: any) { toast(`Erro ao remover publicacao: ${e?.message || ''}`, 'error') }
+    } catch (e) { alert('Erro ao remover publicacao') }
   }
 
   const publicUrl = publicSlug ? `${window.location.origin}/core/public/${publicSlug}` : null
@@ -253,11 +243,11 @@ export default function Dashboard() {
             onClick={async () => {
               try {
                 const r = await refreshHub()
-                toast(`Sincronizado com Hub: ${r.hub_clients} clientes · ${r.with_meta} Meta · ${r.with_ig} IG · ${r.with_gads} Google Ads`, 'success', 6000)
+                alert(`Sincronizado com Hub:\n${r.hub_clients} clientes\n${r.with_meta} com Meta\n${r.with_ig} com Instagram\n${r.with_gads} com Google Ads`)
                 const accs = await fetchAccounts()
                 setAccounts(accs)
                 if (!selectedAccount && accs.length > 0) setSelectedAccount(accs[0])
-              } catch (e: any) { toast('Erro ao atualizar do Hub: ' + (e?.message || ''), 'error') }
+              } catch (e: any) { alert('Erro ao atualizar do Hub: ' + e.message) }
             }}
           ><RefreshCw size={16} /></button>
           <button className="logout-btn" onClick={logout} title="Sair"><LogOut size={16} /></button>
@@ -391,39 +381,68 @@ export default function Dashboard() {
                       <MetricCards current={current} previous={previous} cards={config.cards} />
                     </section>
 
-                    {/* GRAFICO DIARIO + FUNIL lado a lado */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16 }}>
-                      <section className={`dash-section ${editing ? 'is-editing' : ''}`} style={{ margin: 0 }}>
-                        {editing && (
-                          <div className="section-editor-bar">
-                            <span className="section-chip">Grafico diario</span>
-                            <MetricPicker label="Metricas do grafico" selected={config.chartAvailableMetrics} onChange={v => patchConfig({ chartAvailableMetrics: v })} />
-                            <MetricPicker label={`Default: ${config.chartDefaultMetric}`} selected={[config.chartDefaultMetric]} onChange={v => patchConfig({ chartDefaultMetric: v[0] || 'spend' })} singleSelect allowedKeys={config.chartAvailableMetrics} />
-                          </div>
-                        )}
-                        <div className="chart-card" style={{ height: '100%' }}>
-                          <SpendChart
-                            currentData={dailyCompare?.current || []}
-                            previousData={dailyCompare?.previous || []}
-                            defaultMetric={config.chartDefaultMetric}
-                            availableMetrics={config.chartAvailableMetrics}
-                          />
+                    {/* CONFIG CONVERSOES META (modo edicao apenas) */}
+                    {editing && current?.actions && current.actions.length > 0 && (
+                      <section className="dash-section is-editing">
+                        <div className="section-editor-bar">
+                          <span className="section-chip">Conversoes Meta desse cliente</span>
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>marque os eventos que contam como "conversao" no Overview</span>
+                        </div>
+                        <div style={{ padding: 14, background: 'var(--bg-secondary)', borderRadius: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {[...new Set(current.actions.map((a: any) => a.action_type))].sort().map((action_type: string) => {
+                            const value = current.actions.find((a: any) => a.action_type === action_type)?.value
+                            const isSelected = (config.metaConversionActions || []).includes(action_type)
+                            return (
+                              <button
+                                key={action_type}
+                                onClick={() => {
+                                  const cur = config.metaConversionActions || []
+                                  patchConfig({ metaConversionActions: isSelected ? cur.filter(a => a !== action_type) : [...cur, action_type] })
+                                }}
+                                style={{
+                                  padding: '6px 12px', borderRadius: 6,
+                                  background: isSelected ? 'rgba(52,199,89,0.15)' : 'var(--bg-card)',
+                                  color: isSelected ? '#34C759' : 'var(--text-secondary)',
+                                  border: `1px solid ${isSelected ? 'rgba(52,199,89,0.35)' : 'var(--border-subtle)'}`,
+                                  fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                                  fontFamily: 'ui-monospace, monospace',
+                                }}
+                              >
+                                {isSelected ? '✓ ' : ''}{action_type} <span style={{ opacity: 0.6 }}>({value})</span>
+                              </button>
+                            )
+                          })}
                         </div>
                       </section>
+                    )}
 
-                      <section className={`dash-section ${editing ? 'is-editing' : ''}`} style={{ margin: 0 }}>
-                        {editing && (
-                          <div className="section-editor-bar">
-                            <span className="section-chip">Funil</span>
-                            <MetricPicker label="Etapas do funil" selected={config.funnel} onChange={v => patchConfig({ funnel: v })} />
+                    {/* GRAFICO DIARIO + FUNIL — lado a lado */}
+                    <section className={`dash-section ${editing ? 'is-editing' : ''}`}>
+                      {editing && (
+                        <div className="section-editor-bar">
+                          <span className="section-chip">Grafico + Funil</span>
+                          <MetricPicker label="Metricas do grafico" selected={config.chartAvailableMetrics} onChange={v => patchConfig({ chartAvailableMetrics: v })} />
+                          <MetricPicker label={`Grafico default: ${config.chartDefaultMetric}`} selected={[config.chartDefaultMetric]} onChange={v => patchConfig({ chartDefaultMetric: v[0] || 'spend' })} singleSelect allowedKeys={config.chartAvailableMetrics} />
+                          <MetricPicker label="Etapas do funil" selected={config.funnel} onChange={v => patchConfig({ funnel: v })} />
+                        </div>
+                      )}
+                      <div className="perf-grid">
+                        {!(selectedAccount?.name || '').toLowerCase().match(/autocar|gui auto/) && (
+                          <div className="chart-card">
+                            <SpendChart
+                              currentData={dailyCompare?.current || []}
+                              previousData={dailyCompare?.previous || []}
+                              defaultMetric={config.chartDefaultMetric}
+                              availableMetrics={config.chartAvailableMetrics}
+                            />
                           </div>
                         )}
-                        <div className="chart-card" style={{ height: '100%' }}>
+                        <div className="chart-card">
                           <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, letterSpacing: '.02em' }}>Funil</h3>
                           <FunnelChart insight={current} steps={config.funnel} />
                         </div>
-                      </section>
-                    </div>
+                      </div>
+                    </section>
 
                     {/* CAMPANHAS */}
                     <section className={`dash-section ${editing ? 'is-editing' : ''}`}>
@@ -442,6 +461,7 @@ export default function Dashboard() {
                           since={showCustomDates && customDateFrom ? customDateFrom : undefined}
                           until={showCustomDates && customDateTo ? customDateTo : undefined}
                           columns={config.table}
+                          accountId={selectedAccount.id}
                         />
                       </div>
                     </section>
@@ -488,7 +508,7 @@ export default function Dashboard() {
                   {publicUrl && (
                     <div className="share-link-box">
                       <code>{publicUrl}</code>
-                      <button className="btn-tool" onClick={() => { navigator.clipboard.writeText(publicUrl); toast('Link copiado pra area de transferencia', 'success', 2500) }}>
+                      <button className="btn-tool" onClick={() => { navigator.clipboard.writeText(publicUrl); alert('Link copiado!') }}>
                         <Copy size={13} /> Copiar
                       </button>
                       <a className="btn-tool" href={publicUrl} target="_blank" rel="noreferrer"><Eye size={13} /> Abrir</a>
